@@ -5,6 +5,18 @@ export function generateId(prefix = 'id') {
   return `${prefix}_${Date.now().toString(36)}_${idCounter}`;
 }
 
+export function createDefaultColumn(overrides = {}) {
+  return {
+    id: generateId('col'),
+    name: 'column_name',
+    type: 'text',
+    isPrimaryKey: false,
+    isNotNull: false,
+    isUnique: false,
+    ...overrides,
+  };
+}
+
 export function createDefaultTable(position) {
   return {
     id: generateId('table'),
@@ -13,14 +25,7 @@ export function createDefaultTable(position) {
     data: {
       name: 'new_table',
       columns: [
-        {
-          id: generateId('col'),
-          name: 'id',
-          type: 'uuid',
-          isPrimaryKey: true,
-          isNotNull: true,
-          isUnique: false,
-        },
+        createDefaultColumn({ name: 'id', type: 'uuid', isPrimaryKey: true, isNotNull: true }),
       ],
     },
   };

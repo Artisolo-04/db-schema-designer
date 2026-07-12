@@ -1,18 +1,76 @@
-import { Handle, Position } from '@xyflow/react';
-import { Table2 } from 'lucide-react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
+import { COLUMN_TYPES } from '../../utils/columnTypes.js';
+import { createDefaultColumn } from '../../utils/schemaDefaults.js';
+import EditableText from './EditableText.jsx';
 
-export default function TableNode({ data }) {
+const FLAGS = [
+  { key: 'isPrimaryKey', label: 'Primary key', icon: Key },
+  { key: 'isNotNull', label: 'Not null', icon: Asterisk },
+  { key: 'isUnique', label: 'Unique', icon: Fingerprint },
+];
+
+export default function TableNode({ id, data }) {
+  const { setNodes } = useReactFlow();
+
+  function updateData(updater) {
+    setNodes((nds) =>
+      nds.map((node) => (node.id === id ? { ...node, data: updater(node.data) } : node))
+    );
+  }
+
+  function setTableName(name) {
+    updateData((d) => ({ ...d, name }));
+  }
+
+  function addColumn() {
+    updateData((d) => ({ ...d, columns: [...d.columns, createDefaultColumn()] }));
+  }
+
+  function deleteColumn(colId) {
+    updateData((d) => ({ ...d, columns: d.columns.filter((c) => c.id !== colId) }));
+  }
+
+  function updateColumn(colId, patch) {
+    updateData((d) => ({
+      ...d,
+      columns: d.columns.map((c) => (c.id === colId ? { ...c, ...patch } : c)),
+    }));
+  }
+
+  function toggleFlag(colId, flagKey) {
+    updateData((d) => ({
+      ...d,
+      columns: d.columns.map((c) =>
+        c.id === colId ? { ...c, [flagKey]: !c[flagKey] } : c
+      ),
+    }));
+  }
+
   const columns = data.columns || [];
 
   return (
-    <div className="min-w-[220px] glass-card overflow-hidden shadow-xl shadow-black/40">
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-2 border-b border-surface-border">
+    <div className="min-w-[280px] glass-card overflow-hidden shadow-xl shadow-black/40 nodrag-target">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-2 border-b border-surface-border cursor-grab active:cursor-grabbing">
         <Table2 className="w-4 h-4 text-brand-400 shrink-0" />
-        <span className="text-sm font-medium text-slate-100 truncate">
-          {data.name || 'untitled_table'}
-        </span>
+        <EditableText
+          value={data.name}
+          onChange={setTableName}
+          className="text-sm font-medium text-slate-100 truncate flex-1 hover:text-brand-300 transition"
+          inputClassName="text-sm font-medium bg-surface-3 border border-brand-500/50 rounded px-1.5 py-0.5 text-slate-100 flex-1 outline-none nodrag"
+          placeholder="table_name"
+        />
+        <button
+          onClick={() => setNodes((nds) => nds.filter((n) => n.id !== id))}
+          className="nodrag text-slate-500 hover:text-red-400 transition shrink-0"
+          title="Delete table"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
+      {/* Columns */}
       <div className="py-1">
         {columns.length === 0 ? (
           <div className="px-3 py-3 text-xs text-slate-500 italic">No columns yet</div>
@@ -20,26 +78,83 @@ export default function TableNode({ data }) {
           columns.map((col) => (
             <div
               key={col.id}
-              className="relative flex items-center justify-between px-3 py-1.5 text-xs hover:bg-surface-2/60 transition"
+              className="group relative px-3 py-2 hover:bg-surface-2/60 transition border-b border-surface-border/50 last:border-b-0"
             >
               <Handle
-                type="target"
+                type="source"
                 position={Position.Left}
                 id={col.id}
-                className="!left-0"
+                className="!left-0 !top-1/2"
               />
-              <span className="text-slate-300">{col.name}</span>
-              <span className="text-slate-500">{col.type}</span>
               <Handle
-                type="source"
+                type="target"
                 position={Position.Right}
                 id={col.id}
-                className="!right-0"
+                className="!right-0 !top-1/2"
               />
+
+              <div className="flex items-center gap-1.5 nodrag">
+                <EditableText
+                  value={col.name}
+                  onChange={(name) => updateColumn(col.id, { name })}
+                  className="text-xs text-slate-200 truncate flex-1 min-w-0 hover:text-brand-300 transition"
+                  inputClassName="text-xs bg-surface-3 border border-brand-500/50 rounded px-1 py-0.5 text-slate-100 flex-1 min-w-0 outline-none"
+                  placeholder="column_name"
+                />
+
+                <select
+                  value={col.type}
+                  onChange={(e) => updateColumn(col.id, { type: e.target.value })}
+                  className="text-[11px] bg-surface-3 border border-surface-border rounded px-1 py-0.5 text-slate-400
+                             focus:outline-none focus:border-brand-500/50 shrink-0"
+                >
+                  {COLUMN_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => deleteColumn(col.id)}
+                  className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition shrink-0"
+                  title="Delete column"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1 mt-1.5 nodrag">
+                {FLAGS.map(({ key, label, icon: Icon }) => {
+                  const active = !!col[key];
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleFlag(col.id, key)}
+                      title={label}
+                      className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border transition
+                        ${active
+                          ? 'bg-brand-500/15 border-brand-500/40 text-brand-300'
+                          : 'bg-transparent border-surface-border text-slate-600 hover:text-slate-400 hover:border-slate-600'}`}
+                    >
+                      <Icon className="w-2.5 h-2.5" />
+                      {key === 'isPrimaryKey' ? 'PK' : key === 'isNotNull' ? 'NN' : 'UQ'}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Add column footer */}
+      <button
+        onClick={addColumn}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-slate-400
+                   hover:text-brand-300 hover:bg-surface-2/60 transition border-t border-surface-border nodrag"
+      >
+        <Plus className="w-3 h-3" />
+        Add column
+      </button>
     </div>
   );
 }

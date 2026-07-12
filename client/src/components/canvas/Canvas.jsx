@@ -57,6 +57,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
         fitView
         colorMode="dark"
         defaultEdgeOptions={{ type: 'smoothstep' }}
+        deleteKeyCode={['Backspace', 'Delete']}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />
         <Controls />
