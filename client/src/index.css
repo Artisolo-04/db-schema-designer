@@ -1,13 +1,77 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #eef4ff;
-  --color-brand-100: #dae6ff;
-  --color-brand-500: #4f6ef7;
-  --color-brand-600: #3d57e0;
-  --color-brand-700: #3346b8;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #f2efff;
+  --color-brand-100: #e4defe;
+  --color-brand-200: #cabffd;
+  --color-brand-300: #ac9afb;
+  --color-brand-400: #9270f7;
+  --color-brand-500: #7c4df2;
+  --color-brand-600: #6931e0;
+  --color-brand-700: #5824bd;
+  --color-brand-800: #481f97;
+  --color-brand-900: #3b1c78;
+
+  --color-surface-0: #0a0a0f;
+  --color-surface-1: #121218;
+  --color-surface-2: #1a1a23;
+  --color-surface-3: #24242f;
+  --color-surface-border: #2c2c38;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-surface-0 text-slate-100 antialiased;
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(124, 77, 242, 0.12), transparent 40%),
+    radial-gradient(circle at 85% 20%, rgba(105, 49, 224, 0.10), transparent 35%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background-color: rgba(124, 77, 242, 0.35);
+}
+
+/* Reusable component classes */
+.glass-card {
+  @apply bg-surface-1/80 border border-surface-border rounded-2xl backdrop-blur-xl;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg
+         bg-gradient-to-b from-brand-500 to-brand-600
+         text-white text-sm font-medium px-4 py-2.5
+         shadow-[0_1px_0_0_rgba(255,255,255,0.15)_inset,0_4px_12px_-2px_rgba(124,77,242,0.5)]
+         hover:from-brand-400 hover:to-brand-500
+         active:scale-[0.98] transition-all duration-150
+         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-brand-500 disabled:hover:to-brand-600;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg
+         bg-surface-2 border border-surface-border text-slate-200 text-sm font-medium px-4 py-2.5
+         hover:bg-surface-3 hover:border-slate-600
+         active:scale-[0.98] transition-all duration-150
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg
+         bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium px-4 py-2.5
+         hover:bg-red-500/20 hover:border-red-500/50
+         active:scale-[0.98] transition-all duration-150
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.input-field {
+  @apply w-full rounded-lg bg-surface-2 border border-surface-border px-3 py-2.5 text-sm text-slate-100
+         placeholder:text-slate-500
+         focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
+         transition;
 }
