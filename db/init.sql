@@ -21,3 +21,19 @@ CREATE TABLE IF NOT EXISTS project_data (
   project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
   diagram_json jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+
+-- Auto-update projects.updated_at on row changes
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_projects_updated_at ON projects;
+CREATE TRIGGER trg_projects_updated_at
+BEFORE UPDATE ON projects
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
