@@ -6,7 +6,6 @@ const router = Router();
 
 router.use(requireAuth);
 
-// GET /api/projects - list all projects for the logged-in user
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
@@ -23,7 +22,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/projects - create a new project (also creates empty project_data row)
 router.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -59,7 +57,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Helper: verify project belongs to req.user, returns project row or null
 async function findOwnedProject(projectId, userId) {
   const result = await pool.query(
     'SELECT id, name, created_at, updated_at FROM projects WHERE id = $1 AND user_id = $2',
@@ -68,7 +65,6 @@ async function findOwnedProject(projectId, userId) {
   return result.rows[0] || null;
 }
 
-// PATCH /api/projects/:id - rename a project
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -96,7 +92,6 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:id - delete a project (cascades to project_data)
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -115,7 +110,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// GET /api/projects/:id/data - fetch the diagram JSON for a project
 router.get('/:id/data', async (req, res) => {
   try {
     const { id } = req.params;
@@ -139,7 +133,6 @@ router.get('/:id/data', async (req, res) => {
   }
 });
 
-// PUT /api/projects/:id/data - save (upsert) the diagram JSON for a project
 router.put('/:id/data', async (req, res) => {
   try {
     const { id } = req.params;
@@ -161,7 +154,6 @@ router.put('/:id/data', async (req, res) => {
       [id, JSON.stringify(diagram_json)]
     );
 
-    // Touch the parent project's updated_at
     await pool.query('UPDATE projects SET updated_at = now() WHERE id = $1', [id]);
 
     res.json({ status: 'saved' });

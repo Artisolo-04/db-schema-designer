@@ -31,7 +31,7 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/40">
             <LayoutGrid className="w-5 h-5 text-white" strokeWidth={2.5} />
           </div>
           <span className="text-slate-100 font-semibold text-lg">SchemaFlow</span>

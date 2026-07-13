@@ -107,7 +107,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen" onClick={() => setOpenMenuId(null)}>
-      {/* Top bar */}
       <header className="border-b border-surface-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -212,7 +211,6 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Create modal */}
       <Modal open={createOpen} title="New project" onClose={() => setCreateOpen(false)}>
         <form onSubmit={handleCreate}>
           <FormField
@@ -232,7 +230,6 @@ export default function Dashboard() {
         </form>
       </Modal>
 
-      {/* Rename modal */}
       <Modal open={!!renameTarget} title="Rename project" onClose={() => setRenameTarget(null)}>
         <form onSubmit={handleRename}>
           <FormField
@@ -252,7 +249,6 @@ export default function Dashboard() {
         </form>
       </Modal>
 
-      {/* Delete confirm */}
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete project?"

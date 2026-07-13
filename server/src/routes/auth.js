@@ -11,7 +11,6 @@ function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -46,7 +45,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -82,7 +80,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(

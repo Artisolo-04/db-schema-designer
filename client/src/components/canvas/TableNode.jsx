@@ -3,6 +3,7 @@ import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
 import { COLUMN_TYPES } from '../../utils/columnTypes.js';
 import { createDefaultColumn } from '../../utils/schemaDefaults.js';
 import EditableText from './EditableText.jsx';
+import TypeSelect from './TypeSelect.jsx';
 
 const FLAGS = [
   { key: 'isPrimaryKey', label: 'Primary key', icon: Key },
@@ -51,7 +52,6 @@ export default function TableNode({ id, data }) {
 
   return (
     <div className="min-w-[280px] glass-card overflow-hidden shadow-xl shadow-black/40 nodrag-target">
-      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-2 border-b border-surface-border cursor-grab active:cursor-grabbing">
         <Table2 className="w-4 h-4 text-brand-400 shrink-0" />
         <EditableText
@@ -70,7 +70,6 @@ export default function TableNode({ id, data }) {
         </button>
       </div>
 
-      {/* Columns */}
       <div className="py-1">
         {columns.length === 0 ? (
           <div className="px-3 py-3 text-xs text-slate-500 italic">No columns yet</div>
@@ -102,16 +101,11 @@ export default function TableNode({ id, data }) {
                   placeholder="column_name"
                 />
 
-                <select
+                <TypeSelect
                   value={col.type}
-                  onChange={(e) => updateColumn(col.id, { type: e.target.value })}
-                  className="text-[11px] bg-surface-3 border border-surface-border rounded px-1 py-0.5 text-slate-400
-                             focus:outline-none focus:border-brand-500/50 shrink-0"
-                >
-                  {COLUMN_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                  options={COLUMN_TYPES}
+                  onChange={(type) => updateColumn(col.id, { type })}
+                />
 
                 <button
                   onClick={() => deleteColumn(col.id)}
@@ -146,7 +140,6 @@ export default function TableNode({ id, data }) {
         )}
       </div>
 
-      {/* Add column footer */}
       <button
         onClick={addColumn}
         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-slate-400

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -10,13 +10,17 @@ import {
   applyEdgeChanges,
 } from '@xyflow/react';
 import TableNode from './TableNode.jsx';
+import AvoidEdge from './AvoidEdge.jsx';
 import { createDefaultTable } from '../../utils/schemaDefaults.js';
 
 const nodeTypes = { tableNode: TableNode };
+const edgeTypes = { avoid: AvoidEdge };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange }) {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
+  const isFirstRender = useRef(true);
+  const isDragging = useRef(false);
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -42,8 +46,25 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     setNodes((nds) => [...nds, newTable]);
   }, []);
 
-  // Expose addTable to parent via ref callback
   if (onAddTableRef) onAddTableRef.current = addTable;
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (isDragging.current) return;
+    onChange?.(nodes, edges);
+  }, [nodes, edges, onChange]);
+
+  function handleNodeDragStart() {
+    isDragging.current = true;
+  }
+
+  function handleNodeDragStop() {
+    isDragging.current = false;
+    onChange?.(nodes, edges);
+  }
 
   return (
     <div className="w-full h-full">
@@ -53,10 +74,15 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDragStart={handleNodeDragStart}
+        onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        snapToGrid={true}
+        snapGrid={[20, 20]}
         fitView
         colorMode="dark"
-        defaultEdgeOptions={{ type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'avoid' }}
         deleteKeyCode={['Backspace', 'Delete']}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />
