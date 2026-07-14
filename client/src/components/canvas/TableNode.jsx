@@ -1,4 +1,4 @@
-import { Handle, Position, useReactFlow } from '@xyflow/react';
+import { useReactFlow } from '@xyflow/react';
 import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
 import { COLUMN_TYPES } from '../../utils/columnTypes.js';
 import { createDefaultColumn } from '../../utils/schemaDefaults.js';
@@ -79,18 +79,6 @@ export default function TableNode({ id, data }) {
               key={col.id}
               className="group relative px-3 py-2 hover:bg-surface-2/60 transition border-b border-surface-border/50 last:border-b-0"
             >
-              <Handle
-                type="source"
-                position={Position.Left}
-                id={col.id}
-                className="!left-0 !top-1/2"
-              />
-              <Handle
-                type="target"
-                position={Position.Right}
-                id={col.id}
-                className="!right-0 !top-1/2"
-              />
 
               <div className="flex items-center gap-1.5 nodrag">
                 <EditableText

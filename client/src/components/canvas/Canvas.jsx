@@ -5,45 +5,61 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
-  addEdge,
   applyNodeChanges,
-  applyEdgeChanges,
 } from '@xyflow/react';
 import TableNode from './TableNode.jsx';
-import AvoidEdge from './AvoidEdge.jsx';
 import { createDefaultTable } from '../../utils/schemaDefaults.js';
+import { collidesWithAny, findFreePosition } from '../../utils/collision.js';
 
 const nodeTypes = { tableNode: TableNode };
-const edgeTypes = { avoid: AvoidEdge };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange }) {
+export default function Canvas({ initialNodes = [], onAddTableRef, onChange }) {
   const [nodes, setNodes] = useState(initialNodes);
-  const [edges, setEdges] = useState(initialEdges);
   const isFirstRender = useRef(true);
   const isDragging = useRef(false);
 
-  const onNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
-  );
+  const onNodesChange = useCallback((changes) => {
+    setNodes((nds) => {
+      const safeChanges = changes.map((change) => {
 
-  const onEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
-  );
+        if (change.type !== 'position' || !change.position) return change;
 
-  const onConnect = useCallback(
-    (connection) => setEdges((eds) => addEdge({ ...connection, animated: false }, eds)),
-    []
-  );
+        const draggedNode = nds.find((n) => n.id === change.id);
+        if (!draggedNode) return change;
+
+        const snappedPosition = change.position;
+
+        const nextPosition = collidesWithAny(draggedNode, snappedPosition, nds)
+          ? change.position
+          : snappedPosition;
+
+        if (!collidesWithAny(draggedNode, nextPosition, nds)) {
+          return { ...change, position: nextPosition };
+        }
+
+        const slideX = { x: nextPosition.x, y: draggedNode.position.y };
+        if (!collidesWithAny(draggedNode, slideX, nds)) {
+          return { ...change, position: slideX };
+        }
+
+        const slideY = { x: draggedNode.position.x, y: nextPosition.y };
+        if (!collidesWithAny(draggedNode, slideY, nds)) {
+          return { ...change, position: slideY };
+        }
+
+        return { ...change, position: draggedNode.position };
+      });
+
+      return applyNodeChanges(safeChanges, nds);
+    });
+  }, []);
 
   const addTable = useCallback(() => {
-    const position = {
-      x: 80 + Math.random() * 300,
-      y: 80 + Math.random() * 200,
-    };
-    const newTable = createDefaultTable(position);
-    setNodes((nds) => [...nds, newTable]);
+    setNodes((nds) => {
+      const position = findFreePosition(nds);
+      const newTable = createDefaultTable(position);
+      return [...nds, newTable];
+    });
   }, []);
 
   if (onAddTableRef) onAddTableRef.current = addTable;
@@ -54,8 +70,8 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       return;
     }
     if (isDragging.current) return;
-    onChange?.(nodes, edges);
-  }, [nodes, edges, onChange]);
+    onChange?.(nodes, []);
+  }, [nodes, onChange]);
 
   function handleNodeDragStart() {
     isDragging.current = true;
@@ -63,26 +79,21 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
 
   function handleNodeDragStop() {
     isDragging.current = false;
-    onChange?.(nodes, edges);
+    onChange?.(nodes, []);
   }
 
   return (
     <div className="w-full h-full">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
         onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
         snapToGrid={true}
         snapGrid={[20, 20]}
         fitView
         colorMode="dark"
-        defaultEdgeOptions={{ type: 'avoid' }}
         deleteKeyCode={['Backspace', 'Delete']}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />

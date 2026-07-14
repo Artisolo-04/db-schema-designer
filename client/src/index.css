@@ -178,3 +178,36 @@ h1, h2, h3 {
 .react-flow__handle:hover {
   background: linear-gradient(135deg, var(--color-brand-300), var(--color-brand-500));
 }
+
+/* ---------- Edge layering: always draw connectors above tables ---------- */
+.react-flow__edges {
+  z-index: 1000 !important;
+}
+.react-flow__nodes {
+  z-index: 1 !important;
+}
+/* Edge lines shouldn't block clicks/drags on the canvas behind them */
+.react-flow__edges {
+  pointer-events: none;
+}
+.react-flow__edge-path {
+  pointer-events: stroke;
+}
+
+/* Edge hover highlight: overlapping edges become distinguishable by
+   hovering — the hovered one pops to front, brightens, and thickens. */
+.react-flow__edge {
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+.react-flow__edge:hover {
+  z-index: 1000;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #b794f6 !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 3px rgba(183, 148, 246, 0.6));
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #9061f9 !important;
+  stroke-width: 2.5px !important;
+}
