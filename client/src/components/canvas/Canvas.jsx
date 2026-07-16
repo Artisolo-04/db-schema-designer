@@ -16,6 +16,13 @@ import RelationshipEdge from './RelationshipEdge.jsx';
 import { createDefaultTable } from '../../utils/schemaDefaults.js';
 import { collidesWithAny, findFreePosition } from '../../utils/collision.js';
 
+import { createContext, useContext } from 'react';
+
+export const CanvasContext = createContext(null);
+export function useCanvasContext() {
+  return useContext(CanvasContext);
+}
+
 const nodeTypes = { tableNode: TableNode };
 const edgeTypes = { relationshipEdge: RelationshipEdge };
 
@@ -26,6 +33,11 @@ function columnIdFromHandle(handleId) {
 
 function relationshipKey(sourceColumnId, targetColumnId) {
   return [sourceColumnId, targetColumnId].sort().join('::');
+}
+
+function findNodeIdByColumnId(nodes, columnId) {
+  const node = nodes.find((n) => (n.data?.columns || []).some((c) => c.id === columnId));
+  return node?.id ?? null;
 }
 
 export default function Canvas({
@@ -118,6 +130,32 @@ export default function Canvas({
     });
   }, []);
 
+  const onCreateRelationship = useCallback((sourceColumnId, targetColumnId) => {
+    const newKey = relationshipKey(sourceColumnId, targetColumnId);
+    const sourceNodeId = findNodeIdByColumnId(nodes, sourceColumnId);
+    const targetNodeId = findNodeIdByColumnId(nodes, targetColumnId);
+    if (!sourceNodeId || !targetNodeId) return;
+
+    setEdges((eds) => {
+      const exists = eds.some(
+        (e) => relationshipKey(e.data?.sourceColumnId, e.data?.targetColumnId) === newKey
+      );
+      if (exists) return eds;
+      return addEdge(
+        {
+          id: `e-${sourceColumnId}-${targetColumnId}`,
+          source: sourceNodeId,
+          sourceHandle: `${sourceColumnId}__right`,
+          target: targetNodeId,
+          targetHandle: `${targetColumnId}__left`,
+          type: 'relationshipEdge',
+          data: { sourceColumnId, targetColumnId },
+        },
+        eds
+      );
+    });
+  }, [nodes]);
+
   const addTable = useCallback(() => {
     setNodes((nds) => {
       const position = findFreePosition(nds);
@@ -148,42 +186,45 @@ export default function Canvas({
 
   return (
     <div className="w-full h-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeDragStart={handleNodeDragStart}
-        onNodeDragStop={handleNodeDragStop}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionMode="loose"
-        connectionLineType={ConnectionLineType.SmoothStep}
-        connectionLineStyle={{ stroke: '#7c4df2', strokeWidth: 1.75 }}
-        defaultEdgeOptions={{
-          type: 'relationshipEdge',
-          markerEnd: {
-            type: MarkerType.Arrow,
-            color: '#7c4df2',
-            width: 10,
-            height: 10,
-          },
-        }}
-        snapToGrid={true}
-        snapGrid={[20, 20]}
-        fitView
-        colorMode="dark"
-        deleteKeyCode={['Backspace', 'Delete']}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />
-        <Controls />
-        <MiniMap
-          nodeColor="#7c4df2"
-          maskColor="rgba(10, 10, 15, 0.7)"
-          style={{ backgroundColor: '#121218' }}
-        />
-      </ReactFlow>
+      <CanvasContext.Provider value={{ nodes, onCreateRelationship }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDragStart={handleNodeDragStart}
+          onNodeDragStop={handleNodeDragStop}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode="loose"
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineStyle={{ stroke: '#7c4df2', strokeWidth: 1.75 }}
+          defaultEdgeOptions={{
+            type: 'relationshipEdge',
+            markerEnd: {
+              type: MarkerType.Arrow,
+              color: '#7c4df2',
+              width: 10,
+              height: 10,
+            },
+          }}
+          snapToGrid={true}
+          snapGrid={[20, 20]}
+          fitView
+          colorMode="dark"
+          deleteKeyCode={['Backspace', 'Delete']}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />
+          <Controls />
+          <MiniMap
+            nodeColor="#7c4df2"
+            maskColor="rgba(10, 10, 15, 0.7)"
+            style={{ backgroundColor: '#121218' }}
+          />
+        </ReactFlow>
+      </CanvasContext.Provider>
+
     </div>
   );
 }

@@ -1,9 +1,12 @@
 import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
+import { useState } from 'react';
 import { COLUMN_TYPES } from '../../utils/columnTypes.js';
 import { createDefaultColumn } from '../../utils/schemaDefaults.js';
 import EditableText from './EditableText.jsx';
 import TypeSelect from './TypeSelect.jsx';
+import { useCanvasContext } from './Canvas.jsx';
+import RelationshipPicker from './RelationshipPicker.jsx';
 
 const FLAGS = [
   { key: 'isPrimaryKey', label: 'Primary key', icon: Key },
@@ -13,6 +16,7 @@ const FLAGS = [
 
 export default function TableNode({ id, data }) {
   const { setNodes } = useReactFlow();
+  const { nodes: allNodes, onCreateRelationship } = useCanvasContext();
 
   function updateData(updater) {
     setNodes((nds) =>
@@ -79,34 +83,32 @@ export default function TableNode({ id, data }) {
               key={col.id}
               className="group relative px-3 py-2 hover:bg-surface-2/60 transition border-b border-surface-border/50 last:border-b-0"
             >
-
-            {}
-            <Handle
-              type="source"
-              position={Position.Left}
-              id={`${col.id}__left`}
-              className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
-              style={{
-                left: -6,
-                width: 6,
-                height: 12,
-                borderRadius: '6px 0 0 6px',
-                transform: 'translateY(-50%)',
-              }}
-            />
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={`${col.id}__right`}
-              className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
-              style={{
-                right: -6,
-                width: 6,
-                height: 12,
-                borderRadius: '0 6px 6px 0',
-                transform: 'translateY(-50%)',
-              }}
-            />
+              <Handle
+                type="source"
+                position={Position.Left}
+                id={`${col.id}__left`}
+                className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
+                style={{
+                  left: -6,
+                  width: 6,
+                  height: 12,
+                  borderRadius: '6px 0 0 6px',
+                  transform: 'translateY(-50%)',
+                }}
+              />
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`${col.id}__right`}
+                className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
+                style={{
+                  right: -6,
+                  width: 6,
+                  height: 12,
+                  borderRadius: '0 6px 6px 0',
+                  transform: 'translateY(-50%)',
+                }}
+              />
 
               <div className="flex items-center gap-1.5 nodrag">
                 <EditableText
@@ -132,7 +134,7 @@ export default function TableNode({ id, data }) {
                 </button>
               </div>
 
-              <div className="flex items-center gap-1 mt-1.5 nodrag">
+              <div className="flex items-center gap-1 mt-1.5 nodrag relative">
                 {FLAGS.map(({ key, label, icon: Icon }) => {
                   const active = !!col[key];
                   return (
@@ -150,6 +152,18 @@ export default function TableNode({ id, data }) {
                     </button>
                   );
                 })}
+
+                <div className="ml-auto">
+                  <RelationshipPicker
+                    targets={(allNodes || []).flatMap((node) =>
+                      (node.data?.columns || [])
+                        .filter((c) => c.id !== col.id && (c.isPrimaryKey || c.isUnique))
+                        .map((column) => ({ tableName: node.data.name, column }))
+                    )}
+                    onSelect={(targetColId) => onCreateRelationship(col.id, targetColId)}
+                  />
+                </div>
+
               </div>
             </div>
           ))

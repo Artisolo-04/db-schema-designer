@@ -181,7 +181,7 @@ h1, h2, h3 {
 
 /* ---------- Edge layering: always draw connectors above tables ---------- */
 .react-flow__edges {
-  z-index: 1000 !important;
+  z-index: 0 !important;
 }
 .react-flow__nodes {
   z-index: 1 !important;
@@ -251,4 +251,15 @@ h1, h2, h3 {
   50% {
     filter: drop-shadow(0 0 11px rgba(167, 139, 250, 0.9));
   }
+}
+
+.react-flow__handle.valid,
+div.react-flow__handle.valid {
+  background-color: #22c55e !important;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6) !important;
+}
+
+.react-flow__handle.invalid,
+div.react-flow__handle.invalid {
+  opacity: 0.25 !important;
 }

@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 
-const ROW_HEIGHT = 36;
-const PANEL_WIDTH = 160;
+const ROW_HEIGHT = 32;
+const PANEL_WIDTH = 192;
+const VISIBLE_ROWS = 6;
 
-export default function Dropdown({ value, options, onChange, className = '', maxVisibleRows = 5 }) {
+export default function Dropdown({ value, options, onChange, className = '' }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const triggerRef = useRef(null);
@@ -28,7 +29,6 @@ export default function Dropdown({ value, options, onChange, className = '', max
 
   useEffect(() => {
     if (!open) return;
-
     function handleClickOutside(e) {
       if (
         panelRef.current && !panelRef.current.contains(e.target) &&
@@ -40,11 +40,9 @@ export default function Dropdown({ value, options, onChange, className = '', max
     function handleScrollOrResize() {
       setOpen(false);
     }
-
     document.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('scroll', handleScrollOrResize, true);
     window.addEventListener('resize', handleScrollOrResize);
-
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       window.removeEventListener('scroll', handleScrollOrResize, true);
@@ -52,7 +50,7 @@ export default function Dropdown({ value, options, onChange, className = '', max
     };
   }, [open]);
 
-  const maxHeight = Math.min(options.length, maxVisibleRows) * ROW_HEIGHT;
+  const maxHeight = Math.min(options.length, VISIBLE_ROWS) * ROW_HEIGHT;
 
   return (
     <div className={`relative nodrag ${className}`}>
@@ -66,7 +64,6 @@ export default function Dropdown({ value, options, onChange, className = '', max
         <span className="truncate max-w-[90px]">{value}</span>
         <ChevronDown className={`w-3 h-3 shrink-0 text-slate-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
-
       {open && createPortal(
         <div
           ref={panelRef}
@@ -75,8 +72,8 @@ export default function Dropdown({ value, options, onChange, className = '', max
           className="dropdown-panel z-[9999] bg-surface-2 border border-surface-border rounded-xl overflow-hidden"
         >
           <div
-            className="custom-scroll overflow-y-auto p-1"
-            style={{ maxHeight: maxHeight + 8 }}
+            className="custom-scroll nowheel overflow-y-auto p-1"
+            style={{ maxHeight }}
           >
             {options.map((opt) => {
               const active = opt === value;

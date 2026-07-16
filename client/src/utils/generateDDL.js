@@ -33,18 +33,28 @@ export function generateDDL(tables = [], edges = []) {
     return `CREATE TABLE ${quoteIdent(table.data?.name)} (\n${body}\n);`;
   });
 
-  const fkStatements = edges
+const fkStatements = edges
     .map((edge, i) => {
-      const from = columnById[edge.sourceHandle];
-      const to = columnById[edge.targetHandle];
+      const from = columnById[edge.data?.sourceColumnId];
+      const to = columnById[edge.data?.targetColumnId];
       if (!from || !to) return null;
 
-      const constraintName = `fk_${from.table.data.name}_${from.column.name}_${i}`;
+      const toIsReferenceable = to.column.isPrimaryKey || to.column.isUnique;
+      const fromIsReferenceable = from.column.isPrimaryKey || from.column.isUnique;
+
+      let child = from;
+      let parent = to;
+      if (!toIsReferenceable && fromIsReferenceable) {
+        child = to;
+        parent = from;
+      }
+
+      const constraintName = `fk_${child.table.data.name}_${child.column.name}_${i}`;
       return (
-        `ALTER TABLE ${quoteIdent(from.table.data.name)}\n` +
+        `ALTER TABLE ${quoteIdent(child.table.data.name)}\n` +
         `  ADD CONSTRAINT ${quoteIdent(constraintName)}\n` +
-        `  FOREIGN KEY (${quoteIdent(from.column.name)})\n` +
-        `  REFERENCES ${quoteIdent(to.table.data.name)}(${quoteIdent(to.column.name)});`
+        `  FOREIGN KEY (${quoteIdent(child.column.name)})\n` +
+        `  REFERENCES ${quoteIdent(parent.table.data.name)}(${quoteIdent(parent.column.name)});`
       );
     })
     .filter(Boolean);
