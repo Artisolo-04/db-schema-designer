@@ -1,11 +1,13 @@
 const DEFAULT_WIDTH = 280;
 const DEFAULT_HEIGHT = 152;
 
-export const COLLISION_PADDING = 40;
+export const COLLISION_PADDING = 80;
 
 export function getNodeRect(node, position = node.position) {
+
   const width = node.measured?.width ?? node.width ?? DEFAULT_WIDTH;
   const height = node.measured?.height ?? node.height ?? DEFAULT_HEIGHT;
+
   return {
     left: position.x,
     right: position.x + width,
@@ -17,14 +19,15 @@ export function getNodeRect(node, position = node.position) {
 export function rectsOverlap(a, b, padding = 0) {
   return (
     a.left < b.right + padding &&
-    a.right + padding > b.left &&
+    a.right > b.left - padding &&
     a.top < b.bottom + padding &&
-    a.bottom + padding > b.top
+    a.bottom > b.top - padding
   );
 }
 
 export function collidesWithAny(node, position, allNodes, padding = COLLISION_PADDING) {
   const movingRect = getNodeRect(node, position);
+
   return allNodes.some((other) => {
     if (other.id === node.id) return false;
     return rectsOverlap(movingRect, getNodeRect(other), padding);
@@ -63,9 +66,9 @@ export function findFreePosition(existingNodes, options = {}) {
   const seen = new Set();
 
   for (const position of candidates) {
-    const key = `${position.x}:${position.y}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const positionKey = `${position.x}:${position.y}`;
+    if (seen.has(positionKey)) continue;
+    seen.add(positionKey);
 
     if (!collidesWithAny(probeNode, position, existingNodes)) {
       return position;

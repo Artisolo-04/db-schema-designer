@@ -194,8 +194,7 @@ h1, h2, h3 {
   pointer-events: stroke;
 }
 
-/* Edge hover highlight: overlapping edges become distinguishable by
-   hovering — the hovered one pops to front, brightens, and thickens. */
+/* Edge hover highlight: overlapping edges become distinguishable by hovering — the hovered one pops to front, brightens, and thickens. */
 .react-flow__edge {
   transition: stroke 120ms ease, stroke-width 120ms ease;
 }
@@ -210,4 +209,46 @@ h1, h2, h3 {
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: #9061f9 !important;
   stroke-width: 2.5px !important;
+}
+
+/* === Premium relationship edge selection === */
+.edge-premium {
+  transition: stroke 140ms ease, stroke-width 140ms ease, filter 200ms ease;
+}
+
+.edge-premium.edge-flowing {
+  stroke-dasharray: 6 5;
+  animation:
+    edge-select-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) 1,
+    edge-flow-dash 0.7s linear infinite 260ms,
+    edge-glow-pulse 1.8s ease-in-out infinite 260ms;
+}
+
+@keyframes edge-select-pop {
+  0% {
+    stroke-width: 1.8;
+    filter: drop-shadow(0 0 0 rgba(167, 139, 250, 0));
+  }
+  45% {
+    stroke-width: 3.4;
+  }
+  100% {
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.52));
+  }
+}
+
+@keyframes edge-flow-dash {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+@keyframes edge-glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 5px rgba(167, 139, 250, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 0 11px rgba(167, 139, 250, 0.9));
+  }
 }

@@ -1,4 +1,4 @@
-import { useReactFlow } from '@xyflow/react';
+import { Handle, Position, useReactFlow } from '@xyflow/react';
 import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
 import { COLUMN_TYPES } from '../../utils/columnTypes.js';
 import { createDefaultColumn } from '../../utils/schemaDefaults.js';
@@ -51,8 +51,8 @@ export default function TableNode({ id, data }) {
   const columns = data.columns || [];
 
   return (
-    <div className="min-w-[280px] glass-card overflow-hidden shadow-xl shadow-black/40 nodrag-target">
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-2 border-b border-surface-border cursor-grab active:cursor-grabbing">
+    <div className="min-w-[280px] glass-card overflow-visible shadow-xl shadow-black/40 nodrag-target">
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-2 border-b border-surface-border cursor-grab active:cursor-grabbing rounded-t-xl">
         <Table2 className="w-4 h-4 text-brand-400 shrink-0" />
         <EditableText
           value={data.name}
@@ -79,6 +79,34 @@ export default function TableNode({ id, data }) {
               key={col.id}
               className="group relative px-3 py-2 hover:bg-surface-2/60 transition border-b border-surface-border/50 last:border-b-0"
             >
+
+            {}
+            <Handle
+              type="source"
+              position={Position.Left}
+              id={`${col.id}__left`}
+              className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
+              style={{
+                left: -6,
+                width: 6,
+                height: 12,
+                borderRadius: '6px 0 0 6px',
+                transform: 'translateY(-50%)',
+              }}
+            />
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={`${col.id}__right`}
+              className="!bg-brand-500/70 !border !border-brand-400/50 hover:!bg-brand-400 transition"
+              style={{
+                right: -6,
+                width: 6,
+                height: 12,
+                borderRadius: '0 6px 6px 0',
+                transform: 'translateY(-50%)',
+              }}
+            />
 
               <div className="flex items-center gap-1.5 nodrag">
                 <EditableText
@@ -131,7 +159,7 @@ export default function TableNode({ id, data }) {
       <button
         onClick={addColumn}
         className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-slate-400
-                   hover:text-brand-300 hover:bg-surface-2/60 transition border-t border-surface-border nodrag"
+                  hover:text-brand-300 hover:bg-surface-2/60 transition border-t border-surface-border nodrag rounded-b-xl"
       >
         <Plus className="w-3 h-3" />
         Add column
