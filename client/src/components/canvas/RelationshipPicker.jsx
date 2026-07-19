@@ -4,7 +4,7 @@ import { Link2, Search } from 'lucide-react';
 const VISIBLE_ROWS = 6;
 const ROW_HEIGHT = 32;
 
-export default function RelationshipPicker({ targets, onSelect }) {
+export default function RelationshipPicker({ targets, onSelect, onOpen }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -46,6 +46,10 @@ export default function RelationshipPicker({ targets, onSelect }) {
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlight, open]);
 
+  function handleWheel(e) {
+    e.stopPropagation();
+  }
+
   function selectTarget(columnId) {
     onSelect(columnId);
     setOpen(false);
@@ -71,7 +75,13 @@ export default function RelationshipPicker({ targets, onSelect }) {
     <div ref={rootRef} className="relative nodrag">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => {
+            const next = !o;
+            if (next) onOpen?.();
+            return next;
+          });
+        }}
         title="Link to another column"
         className={`text-slate-500 hover:text-brand-300 transition ${open ? 'text-brand-300' : ''}`}
       >
@@ -80,7 +90,7 @@ export default function RelationshipPicker({ targets, onSelect }) {
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1.5 z-50 w-48 dropdown-panel bg-surface-2 border border-surface-border
+          className="absolute right-0 top-full mt-1.5 z-[9999] w-48 dropdown-panel bg-surface-2 border border-surface-border
                      rounded-xl shadow-xl shadow-black/50 overflow-hidden"
           onKeyDown={handleKeyDown}
         >
@@ -101,6 +111,7 @@ export default function RelationshipPicker({ targets, onSelect }) {
           <div
             ref={listRef}
             className="custom-scroll nowheel overflow-y-auto p-1"
+            onWheel={handleWheel}
             style={{ maxHeight: VISIBLE_ROWS * ROW_HEIGHT }}
           >
             {filtered.length === 0 ? (

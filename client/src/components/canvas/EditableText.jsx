@@ -1,21 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-
 export default function EditableText({ value, onChange, className = '', inputClassName = '', placeholder = '' }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef(null);
-
   useEffect(() => {
     setDraft(value);
   }, [value]);
-
   useEffect(() => {
     if (editing && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
   }, [editing]);
-
   function commit() {
     setEditing(false);
     const trimmed = draft.trim();
@@ -25,7 +21,10 @@ export default function EditableText({ value, onChange, className = '', inputCla
       setDraft(value);
     }
   }
-
+  function cancel() {
+    setDraft(value);
+    setEditing(false);
+  }
   if (editing) {
     return (
       <input
@@ -35,7 +34,7 @@ export default function EditableText({ value, onChange, className = '', inputCla
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+          if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         }}
         onClick={(e) => e.stopPropagation()}
         className={inputClassName}
@@ -43,7 +42,6 @@ export default function EditableText({ value, onChange, className = '', inputCla
       />
     );
   }
-
   return (
     <span
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}

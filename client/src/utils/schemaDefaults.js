@@ -1,4 +1,7 @@
 let idCounter = 0;
+const GRID_SIZE = 20;
+const DEFAULT_WIDTH = 300;
+const DEFAULT_HEIGHT = 160;
 
 export function generateId(prefix = 'id') {
   idCounter += 1;
@@ -31,11 +34,22 @@ export function getNextTableName(existingNodes = []) {
   return `new_table_${n}`;
 }
 
+function snapToGrid(value) {
+  return Math.round(value / GRID_SIZE) * GRID_SIZE;
+}
+
 export function createDefaultTable(position, existingNodes = []) {
+  const snappedPosition = {
+    x: snapToGrid(position.x),
+    y: snapToGrid(position.y),
+  };
+
   return {
     id: generateId('table'),
     type: 'tableNode',
-    position,
+    position: snappedPosition,
+    width: DEFAULT_WIDTH,
+    height: DEFAULT_HEIGHT,
     data: {
       name: getNextTableName(existingNodes),
       columns: [

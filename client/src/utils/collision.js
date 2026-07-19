@@ -1,10 +1,24 @@
-const DEFAULT_WIDTH = 280;
-const DEFAULT_HEIGHT = 152;
+const DEFAULT_WIDTH = 320;
+const DEFAULT_HEIGHT = 140;
+const GRID_SIZE = 20;
+const COLLISION_PADDING = 80;
 
-export const COLLISION_PADDING = 80;
+export { COLLISION_PADDING };
+
+function snapToGrid(value, gridSize = GRID_SIZE) {
+  return Math.round(value / gridSize) * gridSize;
+}
+
+export function rectFromPosition(position, size) {
+  return {
+    left: position.x,
+    right: position.x + size.width,
+    top: position.y,
+    bottom: position.y + size.height,
+  };
+}
 
 export function getNodeRect(node, position = node.position) {
-
   const width = node.measured?.width ?? node.width ?? DEFAULT_WIDTH;
   const height = node.measured?.height ?? node.height ?? DEFAULT_HEIGHT;
 
@@ -25,59 +39,63 @@ export function rectsOverlap(a, b, padding = 0) {
   );
 }
 
-export function collidesWithAny(node, position, allNodes, padding = COLLISION_PADDING) {
-  const movingRect = getNodeRect(node, position);
+export function collidesWithAny(cellId, newPosition, size, otherRects, padding = COLLISION_PADDING) {
+  if (!otherRects || otherRects.length === 0) return false;
 
-  return allNodes.some((other) => {
-    if (other.id === node.id) return false;
-    return rectsOverlap(movingRect, getNodeRect(other), padding);
-  });
+  const movingRect = {
+    left: newPosition.x,
+    right: newPosition.x + size.width,
+    top: newPosition.y,
+    bottom: newPosition.y + size.height,
+  };
+
+  for (const other of otherRects) {
+    if (other.id === cellId) continue;
+
+    if (rectsOverlap(movingRect, other, padding)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
-export function findFreePosition(existingNodes, options = {}) {
+export function findFreePosition(otherRects, options = {}) {
   const {
     width = DEFAULT_WIDTH,
     height = DEFAULT_HEIGHT,
-    startX = 80,
-    startY = 80,
-    gapX = 40,
-    gapY = 40,
+    startX = snapToGrid(80),
+    startY = snapToGrid(80),
+    gapX = snapToGrid(COLLISION_PADDING),
+    gapY = snapToGrid(COLLISION_PADDING),
   } = options;
-
-  const probeNode = {
-    id: '**probe**',
-    width,
-    height,
-    position: { x: 0, y: 0 },
-  };
 
   const candidates = [{ x: startX, y: startY }];
 
-  for (const node of existingNodes) {
-    const rect = getNodeRect(node);
-
+  for (const other of otherRects) {
     candidates.push(
-      { x: rect.right + gapX, y: rect.top },
-      { x: rect.left, y: rect.bottom + gapY },
-      { x: startX, y: rect.bottom + gapY }
+      { x: snapToGrid(other.right + gapX), y: snapToGrid(other.top) },
+      { x: snapToGrid(other.left), y: snapToGrid(other.bottom + gapY) },
+      { x: snapToGrid(startX), y: snapToGrid(other.bottom + gapY) }
     );
   }
 
   const seen = new Set();
+  const probeSize = { width, height };
 
   for (const position of candidates) {
     const positionKey = `${position.x}:${position.y}`;
     if (seen.has(positionKey)) continue;
     seen.add(positionKey);
 
-    if (!collidesWithAny(probeNode, position, existingNodes)) {
+    if (!collidesWithAny('**probe**', position, probeSize, otherRects)) {
       return position;
     }
   }
 
-  const lowestBottom = existingNodes.reduce((max, node) => {
-    return Math.max(max, getNodeRect(node).bottom);
+  const lowestBottom = otherRects.reduce((max, rect) => {
+    return Math.max(max, rect.bottom);
   }, startY);
 
-  return { x: startX, y: lowestBottom + gapY };
+  return { x: snapToGrid(startX), y: snapToGrid(lowestBottom + gapY) };
 }

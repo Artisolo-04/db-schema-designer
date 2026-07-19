@@ -1,230 +1,357 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  MarkerType,
-  ConnectionLineType,
-  applyNodeChanges,
-  applyEdgeChanges,
-  addEdge,
-} from '@xyflow/react';
-import TableNode from './TableNode.jsx';
-import RelationshipEdge from './RelationshipEdge.jsx';
+import { useEffect, useRef } from 'react';
+import { dia } from '@joint/core';
+import { Table, Relationship, buildPortItems, computeTableHeight, TABLE_WIDTH, setSelected, manhattanRouter } from './joint/shapes.js';
+import TableElementView from './joint/TableElementView.jsx';
 import { createDefaultTable } from '../../utils/schemaDefaults.js';
-import { collidesWithAny, findFreePosition } from '../../utils/collision.js';
-
-import { createContext, useContext } from 'react';
-
-export const CanvasContext = createContext(null);
-export function useCanvasContext() {
-  return useContext(CanvasContext);
-}
-
-const nodeTypes = { tableNode: TableNode };
-const edgeTypes = { relationshipEdge: RelationshipEdge };
-
-function columnIdFromHandle(handleId) {
-  if (!handleId) return handleId;
-  return handleId.replace(/__(left|right)$/, '');
-}
+import { collidesWithAny, findFreePosition, rectFromPosition } from '../../utils/collision.js';
+import { setupMinimap } from './hooks/setupMinimap.js';
+import { setupZoom } from './hooks/setupZoom.js';
+import { setupSelection } from './hooks/setupSelection.js';
+import { setupDragAndPan } from './hooks/setupDragAndPan.js';
+import { setupResizeObserver } from './hooks/setupResizeObserver.js';
+import { loadInitialGraph } from './hooks/loadInitialGraph.js';
+import { setupGlobalReroute } from './hooks/setupGlobalReroute.js';
+import { createGraphAndPaper } from './hooks/createGraphAndPaper.js';
 
 function relationshipKey(sourceColumnId, targetColumnId) {
   return [sourceColumnId, targetColumnId].sort().join('::');
 }
 
-function findNodeIdByColumnId(nodes, columnId) {
-  const node = nodes.find((n) => (n.data?.columns || []).some((c) => c.id === columnId));
-  return node?.id ?? null;
-}
+const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({
-  initialNodes = [],
-  initialEdges = [],
-  onAddTableRef,
-  onChange,
-}) {
-  const [nodes, setNodes] = useState(initialNodes);
-  const [edges, setEdges] = useState(initialEdges);
-  const isFirstRender = useRef(true);
-  const isDragging = useRef(false);
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange }) {
+  const containerRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const zoomActionsRef = useRef({});
+  const minimapContainerRef = useRef(null);
 
   useEffect(() => {
-    const seen = new Map();
-    const dupes = [];
-    for (const edge of initialEdges) {
-      const k = relationshipKey(edge.data?.sourceColumnId, edge.data?.targetColumnId);
-      if (seen.has(k)) {
-        dupes.push({ key: k, edgeIds: [seen.get(k), edge.id] });
-      } else {
-        seen.set(k, edge.id);
+    const container = containerRef.current;
+    if (!container) return;
+
+    const paperEl = document.createElement('div');
+    paperEl.className = 'w-full h-full';
+    container.appendChild(paperEl);
+
+    function blurActiveInput() {
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+        active.blur();
       }
     }
-    if (dupes.length > 0) {
-      console.warn(
-        `[Canvas] Found ${dupes.length} duplicate relationship(s) already saved in this project:`,
-        dupes
-      );
-    } else {
-      console.info('[Canvas] No duplicate relationships found in saved edges.');
+
+    const GRID_SIZE = 20;
+    const { graph, paper } = createGraphAndPaper({ paperEl, GRID_SIZE, namespace });
+
+    function otherRects(excludeId) {
+      return graph
+        .getElements()
+        .filter((el) => el.id !== excludeId)
+        .map((el) => ({ id: el.id, ...rectFromPosition(el.position(), el.size()) }));
     }
 
-  }, []);
+    function resizeForColumns(el) {
 
-  const onNodesChange = useCallback((changes) => {
-    setNodes((nds) => {
-      const safeChanges = changes.map((change) => {
-        if (change.type !== 'position' || !change.position) return change;
+      const columns = el.get('data')?.columns || [];
+      const nextPorts = buildPortItems(columns);
+      const nextIds = new Set(nextPorts.map((p) => p.id));
+      const existingPorts = el.getPorts();
+      const existingIds = existingPorts.map((p) => p.id);
+      const existingIdSet = new Set(existingIds);
 
-        const draggedNode = nds.find((n) => n.id === change.id);
-        if (!draggedNode) return change;
+      graph.startBatch('resize-columns');
 
-        if (!collidesWithAny(draggedNode, change.position, nds)) {
-          return change;
+      el.resize(TABLE_WIDTH, computeTableHeight(columns.length));
+
+      const toRemove = existingIds.filter((id) => !nextIds.has(id));
+      if (toRemove.length) {
+        el.removePorts(toRemove);
+      }
+
+      const toAdd = nextPorts.filter((p) => !existingIdSet.has(p.id));
+      if (toAdd.length) {
+        el.addPorts(toAdd);
+      }
+
+      nextPorts.forEach((p) => {
+        if (existingIdSet.has(p.id)) {
+          el.portProp(p.id, 'args', p.args);
         }
-
-        const slideX = { x: change.position.x, y: draggedNode.position.y };
-        if (!collidesWithAny(draggedNode, slideX, nds)) {
-          return { ...change, position: slideX };
-        }
-
-        const slideY = { x: draggedNode.position.x, y: change.position.y };
-        if (!collidesWithAny(draggedNode, slideY, nds)) {
-          return { ...change, position: slideY };
-        }
-
-        return { ...change, position: draggedNode.position };
       });
 
-      return applyNodeChanges(safeChanges, nds);
-    });
-  }, []);
-
-  const onEdgesChange = useCallback((changes) => {
-    setEdges((eds) => applyEdgeChanges(changes, eds));
-  }, []);
-
-  const onConnect = useCallback((params) => {
-    const sourceColumnId = columnIdFromHandle(params.sourceHandle);
-    const targetColumnId = columnIdFromHandle(params.targetHandle);
-    const newKey = relationshipKey(sourceColumnId, targetColumnId);
-
-    setEdges((eds) => {
-      const alreadyExists = eds.some(
-        (e) => relationshipKey(e.data?.sourceColumnId, e.data?.targetColumnId) === newKey
-      );
-      if (alreadyExists) {
-        console.warn('[Canvas] Ignored duplicate connection attempt:', newKey);
-        return eds;
-      }
-      return addEdge(
-        {
-          ...params,
-          type: 'relationshipEdge',
-          data: { sourceColumnId, targetColumnId },
-        },
-        eds
-      );
-    });
-  }, []);
-
-  const onCreateRelationship = useCallback((sourceColumnId, targetColumnId) => {
-    const newKey = relationshipKey(sourceColumnId, targetColumnId);
-    const sourceNodeId = findNodeIdByColumnId(nodes, sourceColumnId);
-    const targetNodeId = findNodeIdByColumnId(nodes, targetColumnId);
-    if (!sourceNodeId || !targetNodeId) return;
-
-    setEdges((eds) => {
-      const exists = eds.some(
-        (e) => relationshipKey(e.data?.sourceColumnId, e.data?.targetColumnId) === newKey
-      );
-      if (exists) return eds;
-      return addEdge(
-        {
-          id: `e-${sourceColumnId}-${targetColumnId}`,
-          source: sourceNodeId,
-          sourceHandle: `${sourceColumnId}__right`,
-          target: targetNodeId,
-          targetHandle: `${targetColumnId}__left`,
-          type: 'relationshipEdge',
-          data: { sourceColumnId, targetColumnId },
-        },
-        eds
-      );
-    });
-  }, [nodes]);
-
-  const addTable = useCallback(() => {
-    setNodes((nds) => {
-      const position = findFreePosition(nds);
-      const newTable = createDefaultTable(position, nds);
-      return [...nds, newTable];
-    });
-  }, []);
-
-  if (onAddTableRef) onAddTableRef.current = addTable;
-
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
+      graph.stopBatch('resize-columns');
     }
-    if (isDragging.current) return;
-    onChange?.(nodes, edges);
-  }, [nodes, edges, onChange]);
 
-  function handleNodeDragStart() {
-    isDragging.current = true;
-  }
+    function emitChange() {
 
-  function handleNodeDragStop() {
-    isDragging.current = false;
-    onChange?.(nodes, edges);
-  }
+      const nodes = graph.getElements().map((el) => ({
+        id: el.id,
+        type: 'tableNode',
+        position: el.position(),
+        data: el.get('data'),
+      }));
+
+      const edges = graph.getLinks().map((link) => {
+        const data = link.get('data') || {};
+        return {
+          id: link.id,
+          source: link.get('source').id,
+          sourceHandle: data.sourceColumnId ? `${data.sourceColumnId}__${data.sourceSide || 'right'}` : undefined,
+          target: link.get('target').id,
+          targetHandle: data.targetColumnId ? `${data.targetColumnId}__${data.targetSide || 'left'}` : undefined,
+          type: 'relationshipEdge',
+          data,
+        };
+      });
+      onChangeRef.current?.(nodes, edges);
+    }
+
+    function renderAllTables() {
+
+      const elements = graph.getElements();
+      const allTables = elements.map((el) => ({ id: el.id, data: el.get('data') }));
+      elements.forEach((el) => {
+        paper.findViewByModel(el)?.renderReact?.({
+          allTables,
+          onUpdateData,
+          onDeleteTable,
+          onCreateRelationship,
+          bringToFront,
+        });
+      });
+    }
+
+    const { zoomBy, zoomToFit, teardownZoom } = setupZoom({ graph, paper, container });
+
+    zoomActionsRef.current = {
+      zoomIn: () => zoomBy(0.15),
+      zoomOut: () => zoomBy(-0.15),
+      fit: zoomToFit,
+    };
+
+    const minimapContainer = minimapContainerRef.current;
+    const teardownMinimap = setupMinimap({ graph, paper, container, minimapContainer });
+
+    function bringToFront(id) {
+      const el = graph.getCell(id);
+      if (el) el.toFront();
+    }
+
+    function onUpdateData(id, updater) {
+
+      const el = graph.getCell(id);
+      if (!el) return;
+      const previousData = el.get('data') || {};
+      const nextData = updater(previousData);
+      const remainingColumnIds = new Set((nextData.columns || []).map((column) => column.id));
+      const deletedColumnIds = new Set(
+        (previousData.columns || [])
+          .map((column) => column.id)
+          .filter((columnId) => !remainingColumnIds.has(columnId))
+      );
+      graph.getLinks()
+        .filter((link) => {
+          const data = link.get('data') || {};
+          return deletedColumnIds.has(data.sourceColumnId) || deletedColumnIds.has(data.targetColumnId);
+        })
+        .forEach((link) => link.remove());
+
+      const previousTypeById = new Map((previousData.columns || []).map((c) => [c.id, c.type]));
+
+      const changedTypeColumnIds = (nextData.columns || [])
+        .filter((c) => previousTypeById.has(c.id) && previousTypeById.get(c.id) !== c.type)
+        .map((c) => c.id);
+
+      el.set('data', nextData);
+      resizeForColumns(el);
+      renderAllTables();
+      emitChange();
+
+      changedTypeColumnIds.forEach((columnId) => {
+        const newType = (nextData.columns || []).find((c) => c.id === columnId)?.type;
+        if (!newType) return;
+        graph.getLinks().forEach((link) => {
+          const linkData = link.get('data') || {};
+          if (linkData.targetColumnId !== columnId) return;
+          const sourceElId = link.get('source')?.id;
+          const sourceColumnId = linkData.sourceColumnId;
+          if (!sourceElId || !sourceColumnId) return;
+          const sourceEl = graph.getCell(sourceElId);
+          const sourceColumn = (sourceEl?.get('data')?.columns || []).find((c) => c.id === sourceColumnId);
+          if (sourceColumn && sourceColumn.type !== newType) {
+            onUpdateData(sourceElId, (data) => ({
+              ...data,
+              columns: (data.columns || []).map((c) =>
+                c.id === sourceColumnId ? { ...c, type: newType } : c
+              ),
+            }));
+          }
+        });
+      });
+    }
+
+    function onDeleteTable(id) {
+      graph.getCell(id)?.remove();
+      renderAllTables();
+    }
+
+    function onCreateRelationship(sourceColumnId, targetColumnId) {
+
+      const key = relationshipKey(sourceColumnId, targetColumnId);
+      const exists = graph.getLinks().some(
+        (l) => relationshipKey(l.get('data')?.sourceColumnId, l.get('data')?.targetColumnId) === key
+      );
+      if (exists) return;
+      const sourceEl = graph.getElements().find((el) => (el.get('data')?.columns || []).some((c) => c.id === sourceColumnId));
+      const targetEl = graph.getElements().find((el) => (el.get('data')?.columns || []).some((c) => c.id === targetColumnId));
+      if (!sourceEl || !targetEl) return;
+
+      const targetColumn = (targetEl.get('data')?.columns || []).find((c) => c.id === targetColumnId);
+      if (targetColumn) {
+        onUpdateData(sourceEl.id, (data) => ({
+          ...data,
+          columns: (data.columns || []).map((c) =>
+            c.id === sourceColumnId ? { ...c, type: targetColumn.type } : c
+          ),
+        }));
+      }
+
+      const sourcePort = `${sourceColumnId}__right`;
+      const targetPort = `${targetColumnId}__left`;
+
+      const newLink = new Relationship({
+        source: { id: sourceEl.id, port: sourcePort },
+        target: { id: targetEl.id, port: targetPort },
+        router: manhattanRouter(sourcePort, targetPort),
+        data: { sourceColumnId, targetColumnId, sourceSide: 'right', targetSide: 'left' },
+      });
+
+      newLink.addTo(graph);
+      emitChange();
+    }
+
+    function addTable() {
+
+      const wasEmpty = graph.getElements().length === 0;
+      const position = findFreePosition(otherRects('**none**'));
+      const { id, data } = createDefaultTable(position, []);
+      const el = new Table({ id, position, data });
+      resizeForColumns(el);
+      el.addTo(graph);
+      renderAllTables();
+      emitChange();
+      if (wasEmpty) {
+        zoomToFit();
+      }
+    }
+
+    if (onAddTableRef) onAddTableRef.current = addTable;
+
+    const { teardownResizeObserver } = setupResizeObserver({ paper, container });
+
+    loadInitialGraph({ graph, resizeForColumns, GRID_SIZE, initialNodes, initialEdges });
+    renderAllTables();
+    zoomToFit();
+
+    const { teardownGlobalReroute } = setupGlobalReroute({ graph, paper });
+    const { getSelectedCell, clearSelectionSelectedRef } = setupSelection({ graph, paper, setSelected, blurActiveInput });
+    const { teardownDragAndPan } = setupDragAndPan({ graph, paper, container, GRID_SIZE, otherRects, emitChange, blurActiveInput });
+
+    paper.on('link:connect', (linkView) => {
+
+      const link = linkView.model;
+      const source = link.get('source');
+      const target = link.get('target');
+      if (source?.port && target?.port) {
+        const sourceMatch = source.port.match(/^(.*)__(left|right)$/);
+        const targetMatch = target.port.match(/^(.*)__(left|right)$/);
+        if (sourceMatch && targetMatch) {
+
+          const sourceColumnId = sourceMatch[1];
+          const targetColumnId = targetMatch[1];
+          const sourceSide = sourceMatch[2];
+          const targetSide = targetMatch[2];
+          link.set('data', { ...link.get('data'), sourceColumnId, targetColumnId, sourceSide, targetSide });
+
+          const targetEl = graph.getCell(target.id);
+          const targetColumn = (targetEl?.get('data')?.columns || []).find((c) => c.id === targetColumnId);
+          if (targetColumn) {
+            onUpdateData(source.id, (data) => ({
+              ...data,
+              columns: (data.columns || []).map((c) =>
+                c.id === sourceColumnId ? { ...c, type: targetColumn.type } : c
+              ),
+            }));
+          }
+        }
+      }
+      emitChange();
+    });
+
+    graph.on('remove', () => emitChange());
+
+    function handleKeydown(evt) {
+
+      if (evt.key !== 'Backspace' && evt.key !== 'Delete') return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      const selectedCell = getSelectedCell();
+      if (!selectedCell) return;
+      selectedCell.remove();
+      clearSelectionSelectedRef();
+      renderAllTables();
+
+    }
+    
+    document.addEventListener('keydown', handleKeydown);
+
+    return () => {
+      teardownGlobalReroute();
+      document.removeEventListener('keydown', handleKeydown);
+      teardownDragAndPan();
+      teardownZoom();
+      teardownResizeObserver();
+
+      teardownMinimap();
+
+      paper.remove();
+      if (paperEl.parentNode) paperEl.parentNode.removeChild(paperEl);
+    };
+  }, []);
 
   return (
-    <div className="w-full h-full">
-      <CanvasContext.Provider value={{ nodes, onCreateRelationship }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeDragStart={handleNodeDragStart}
-          onNodeDragStop={handleNodeDragStop}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          connectionMode="loose"
-          connectionLineType={ConnectionLineType.SmoothStep}
-          connectionLineStyle={{ stroke: '#7c4df2', strokeWidth: 1.75 }}
-          defaultEdgeOptions={{
-            type: 'relationshipEdge',
-            markerEnd: {
-              type: MarkerType.Arrow,
-              color: '#7c4df2',
-              width: 10,
-              height: 10,
-            },
-          }}
-          snapToGrid={true}
-          snapGrid={[20, 20]}
-          fitView
-          colorMode="dark"
-          deleteKeyCode={['Backspace', 'Delete']}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2c2c38" />
-          <Controls />
-          <MiniMap
-            nodeColor="#7c4df2"
-            maskColor="rgba(10, 10, 15, 0.7)"
-            style={{ backgroundColor: '#121218' }}
-          />
-        </ReactFlow>
-      </CanvasContext.Provider>
+    <div className="relative w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
 
+    <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1 glass-card p-1 !rounded-md">
+      <button
+        onClick={() => zoomActionsRef.current.zoomIn?.()}
+        className="btn-secondary h-8 w-8 p-0 flex items-center justify-center !rounded-sm"
+      >
+        +
+      </button>
+
+      <button
+        onClick={() => zoomActionsRef.current.zoomOut?.()}
+        className="btn-secondary h-8 w-8 p-0 flex items-center justify-center !rounded-sm"
+      >
+        −
+      </button>
+
+      <button
+        onClick={() => zoomActionsRef.current.fit?.()}
+        className="btn-secondary h-8 w-8 p-0 flex items-center justify-center !rounded-sm"
+        title="Fit to view"
+      >
+        ⤢
+      </button>
+    </div>
+
+      <div
+        ref={minimapContainerRef}
+        className="absolute bottom-4 left-4 z-20 w-[220px] h-[124px] glass-card !rounded-md overflow-hidden"
+      />
     </div>
   );
 }

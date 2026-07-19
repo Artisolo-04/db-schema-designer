@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Search, Check } from 'lucide-react';
 
 const VISIBLE_ROWS = 6;
-const ROW_HEIGHT = 32; 
+const ROW_HEIGHT = 32;
 
-export default function TypeSelect({ value, options, onChange }) {
+export default function TypeSelect({ value, options, onChange, onOpen }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -36,7 +36,7 @@ export default function TypeSelect({ value, options, onChange }) {
       setHighlight(Math.max(0, options.indexOf(value)));
       requestAnimationFrame(() => searchRef.current?.focus());
     }
-  }, [open]); 
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -65,11 +65,21 @@ export default function TypeSelect({ value, options, onChange }) {
     }
   }
 
+  function handleWheel(e) {
+    e.stopPropagation();
+  }
+
   return (
     <div ref={rootRef} className="relative nodrag">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => {
+            const next = !o;
+            if (next) onOpen?.();
+            return next;
+          });
+        }}
         className={`flex items-center gap-1 text-xs bg-surface-3 border rounded-md px-2 py-1 transition-colors shrink-0
                     ${open ? 'border-brand-500/60 text-slate-100' : 'border-surface-border text-slate-300 hover:border-slate-600'}
                     focus:outline-none`}
@@ -80,7 +90,7 @@ export default function TypeSelect({ value, options, onChange }) {
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1.5 z-50 w-48 dropdown-panel bg-surface-2 border border-surface-border
+          className="absolute right-0 top-full mt-1.5 z-[9999] w-48 dropdown-panel bg-surface-2 border border-surface-border
                      rounded-xl shadow-xl shadow-black/50 overflow-hidden"
           onKeyDown={handleKeyDown}
         >
@@ -100,7 +110,7 @@ export default function TypeSelect({ value, options, onChange }) {
 
           <div
             ref={listRef}
-            className="custom-scroll nowheel overflow-y-auto p-1"
+            className="custom-scroll nowheel overflow-y-auto p-1" onWheel={handleWheel}
             style={{ maxHeight: VISIBLE_ROWS * ROW_HEIGHT }}
           >
             {filtered.length === 0 ? (
