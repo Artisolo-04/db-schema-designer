@@ -1,25 +1,55 @@
 export function setupSelection({ graph, paper, setSelected, blurActiveInput }) {
   let selectedCell = null;
+  let selectedOriginalZ = null;
+
+  function getLineNode(link) {
+    const view = paper.findViewByModel(link);
+    return view ? view.el.querySelector('[joint-selector="line"]') : null;
+  }
 
   function setLinksDimmed(exceptId) {
     graph.getLinks().forEach((link) => {
-      const view = paper.findViewByModel(link);
-      if (!view) return;
-      view.el.style.opacity = link.id === exceptId ? '1' : '0.4';
+      const lineNode = getLineNode(link);
+      if (!lineNode) return;
+      if (link.id === exceptId) {
+        lineNode.classList.remove('edge-dimmed');
+      } else {
+        lineNode.classList.add('edge-dimmed');
+      }
     });
   }
 
   function clearLinksDimmed() {
     graph.getLinks().forEach((link) => {
-      const view = paper.findViewByModel(link);
-      if (view) view.el.style.opacity = '1';
+      const lineNode = getLineNode(link);
+      if (lineNode) lineNode.classList.remove('edge-dimmed');
     });
+  }
+
+  function activateElectron(link) {
+    const lineNode = getLineNode(link);
+    if (lineNode) lineNode.classList.add('edge-premium', 'edge-flowing');
+    selectedOriginalZ = link.get('z') ?? 0;
+    link.toFront();
+  }
+
+  function deactivateElectron(link) {
+    const lineNode = getLineNode(link);
+    if (lineNode) lineNode.classList.remove('edge-premium', 'edge-flowing');
+    if (selectedOriginalZ !== null) {
+      link.set('z', selectedOriginalZ);
+      selectedOriginalZ = null;
+    }
   }
 
   function clearSelection() {
     if (!selectedCell) return;
-    if (selectedCell.isLink()) setSelected(selectedCell, false);
-    else paper.findViewByModel(selectedCell)?.el.classList.remove('joint-selected');
+    if (selectedCell.isLink()) {
+      setSelected(selectedCell, false);
+      deactivateElectron(selectedCell);
+    } else {
+      paper.findViewByModel(selectedCell)?.el.classList.remove('joint-selected');
+    }
     clearLinksDimmed();
     selectedCell = null;
   }
@@ -30,6 +60,7 @@ export function setupSelection({ graph, paper, setSelected, blurActiveInput }) {
     selectedCell = cell;
     if (cell.isLink()) {
       setSelected(cell, true);
+      activateElectron(cell);
       setLinksDimmed(cell.id);
     } else {
       paper.findViewByModel(cell)?.el.classList.add('joint-selected');

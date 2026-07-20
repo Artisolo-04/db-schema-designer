@@ -13,6 +13,7 @@ export function createGraphAndPaper({ paperEl, GRID_SIZE, namespace }) {
     width: 1,
     height: 1,
     background: { color: '#0d0d12' },
+    sorting: dia.Paper.sorting.EXACT,
     gridSize: GRID_SIZE,
     drawGrid: { name: 'dot', args: { color: '#2c2c38', thickness: 1.5 } },
     cellViewNamespace: namespace,

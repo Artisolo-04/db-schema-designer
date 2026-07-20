@@ -265,6 +265,15 @@ div.react-flow__handle.invalid {
 
 /* --- JointJS canvas additions --- */
 
+/* Dimmed (non-selected) relationship links: flat muted stroke instead
+   of opacity, so contrast stays consistent regardless of what's behind
+   the edge on the canvas (gradients, dot grid, tables). */
+.edge-dimmed {
+  stroke: #3a3555 !important;
+  filter: none !important;
+  transition: stroke 150ms ease, filter 150ms ease;
+}
+
 .joint-paper {
   cursor: grab;
 }
