@@ -17,6 +17,16 @@ function relationshipKey(sourceColumnId, targetColumnId) {
   return [sourceColumnId, targetColumnId].sort().join('::');
 }
 
+const LOOP_MARGIN = 60;
+
+function getPortPosition(el, portId) {
+  const ports = el.get('ports')?.items || [];
+  const port = ports.find((p) => p.id === portId);
+  if (!port) return null;
+  const bbox = el.getBBox();
+  return { x: bbox.x + (port.args?.x ?? 0), y: bbox.y + (port.args?.y ?? 0) };
+}
+
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
 export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange }) {
@@ -81,6 +91,29 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       });
 
       graph.stopBatch('resize-columns');
+    }
+
+    function applySelfLoopRouting(link) {
+      const source = link.get('source');
+      const target = link.get('target');
+      if (!source?.id || !target?.id || source.id !== target.id) return;
+      const el = graph.getCell(source.id);
+      if (!el) return;
+      const sourcePos = getPortPosition(el, source.port);
+      const targetPos = getPortPosition(el, target.port);
+      if (!sourcePos || !targetPos) return;
+      const bbox = el.getBBox();
+      const rightX = bbox.x + bbox.width + LOOP_MARGIN;
+      const bottomY = bbox.y + bbox.height + LOOP_MARGIN;
+      const leftX = bbox.x - LOOP_MARGIN;
+      link.set('router', { name: 'normal' });
+      link.set('connector', { name: 'rounded', args: { radius: 12 } });
+      link.set('vertices', [
+        { x: rightX, y: sourcePos.y },
+        { x: rightX, y: bottomY },
+        { x: leftX, y: bottomY },
+        { x: leftX, y: targetPos.y },
+      ]);
     }
 
     function emitChange() {
@@ -198,6 +231,8 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
 
     function onCreateRelationship(sourceColumnId, targetColumnId) {
 
+      if (sourceColumnId === targetColumnId) return;
+
       const key = relationshipKey(sourceColumnId, targetColumnId);
       const exists = graph.getLinks().some(
         (l) => relationshipKey(l.get('data')?.sourceColumnId, l.get('data')?.targetColumnId) === key
@@ -228,6 +263,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       });
 
       newLink.addTo(graph);
+      applySelfLoopRouting(newLink);
       emitChange();
     }
 
@@ -258,34 +294,145 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     const { getSelectedCell, clearSelectionSelectedRef } = setupSelection({ graph, paper, setSelected, blurActiveInput });
     const { teardownDragAndPan } = setupDragAndPan({ graph, paper, container, GRID_SIZE, otherRects, emitChange, blurActiveInput });
 
-    paper.on('link:connect', (linkView) => {
+    let highlightedPortNode = null;
+    function clearPortHighlight() {
+      if (highlightedPortNode) {
+        highlightedPortNode.classList.remove('port-snap-active');
+        highlightedPortNode = null;
+      }
+    }
+    function setPortHighlight(node) {
+      if (highlightedPortNode === node) return;
+      clearPortHighlight();
+      if (node) {
+        node.classList.add('port-snap-active');
+        highlightedPortNode = node;
+      }
+    }
 
+    const SNAP_MARGIN = 30;
+    paper.on('link:pointermove', (linkView, evt, x, y) => {
       const link = linkView.model;
-      const source = link.get('source');
-      const target = link.get('target');
-      if (source?.port && target?.port) {
-        const sourceMatch = source.port.match(/^(.*)__(left|right)$/);
-        const targetMatch = target.port.match(/^(.*)__(left|right)$/);
-        if (sourceMatch && targetMatch) {
+      const sourceId = link.get('source')?.id;
+      const sourcePortRaw = link.get('source')?.port;
+      const sourceColumnId = sourcePortRaw?.replace(/__(left|right)$/, '');
 
-          const sourceColumnId = sourceMatch[1];
-          const targetColumnId = targetMatch[1];
-          const sourceSide = sourceMatch[2];
-          const targetSide = targetMatch[2];
-          link.set('data', { ...link.get('data'), sourceColumnId, targetColumnId, sourceSide, targetSide });
+      let closestModel = null;
+      let closestModelDist = Infinity;
+      graph.getElements().forEach((model) => {
+        if (model.get('type') !== 'app.Table') return;
+        const bbox = model.getBBox().inflate(SNAP_MARGIN);
+        if (!bbox.containsPoint({ x, y })) return;
+        const cx = bbox.x + bbox.width / 2;
+        const cy = bbox.y + bbox.height / 2;
+        const dist = Math.hypot(cx - x, cy - y);
+        if (dist < closestModelDist) {
+          closestModelDist = dist;
+          closestModel = model;
+        }
+      });
 
-          const targetEl = graph.getCell(target.id);
-          const targetColumn = (targetEl?.get('data')?.columns || []).find((c) => c.id === targetColumnId);
-          if (targetColumn) {
-            onUpdateData(source.id, (data) => ({
-              ...data,
-              columns: (data.columns || []).map((c) =>
-                c.id === sourceColumnId ? { ...c, type: targetColumn.type } : c
-              ),
-            }));
+      if (closestModel) {
+        const ports = closestModel.get('ports')?.items || [];
+        if (ports.length) {
+          const bbox = closestModel.getBBox();
+          let closest = null;
+          let closestDist = Infinity;
+          ports.forEach((port) => {
+            const portColumnId = port.id?.replace(/__(left|right)$/, '');
+            if (sourceColumnId && portColumnId === sourceColumnId) return;
+            const px = bbox.x + (port.args?.x ?? 0);
+            const py = bbox.y + (port.args?.y ?? 0);
+            const dist = Math.hypot(px - x, py - y);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closest = port;
+            }
+          });
+          if (closest) {
+            const targetView = paper.findViewByModel(closestModel);
+            const portNode = targetView?.findPortNode(closest.id, 'portBody');
+            setPortHighlight(portNode || null);
+            link.set('target', { id: closestModel.id, port: closest.id });
+            linkView.el.style.removeProperty('opacity');
+            return;
           }
         }
+        if (closestModel.id === sourceId) {
+          linkView.el.style.opacity = '0';
+          clearPortHighlight();
+          link.set('target', { x, y });
+          return;
+        }
       }
+      clearPortHighlight();
+      link.set('target', { x, y });
+      linkView.el.style.removeProperty('opacity');
+    });
+    function syncLinkTypeAndData(link) {
+      const source = link.get('source');
+      const target = link.get('target');
+      if (!source?.port || !target?.port) return;
+      const sourceMatch = source.port.match(/^(.*)__(left|right)$/);
+      const targetMatch = target.port.match(/^(.*)__(left|right)$/);
+      if (!sourceMatch || !targetMatch) return;
+      const sourceColumnId = sourceMatch[1];
+      const targetColumnId = targetMatch[1];
+      const sourceSide = sourceMatch[2];
+      const targetSide = targetMatch[2];
+      link.set('data', { ...link.get('data'), sourceColumnId, targetColumnId, sourceSide, targetSide });
+      const targetEl = graph.getCell(target.id);
+      const targetColumn = (targetEl?.get('data')?.columns || []).find((c) => c.id === targetColumnId);
+      if (targetColumn) {
+        onUpdateData(source.id, (data) => ({
+          ...data,
+          columns: (data.columns || []).map((c) =>
+            c.id === sourceColumnId ? { ...c, type: targetColumn.type } : c
+          ),
+        }));
+      }
+      emitChange();
+    }
+    paper.on('link:pointerup', (linkView) => {
+      linkView.el.style.removeProperty('opacity');
+      clearPortHighlight();
+      const link = linkView.model;
+      const target = link.get('target');
+      if (target?.id && target?.port) {
+        const source = link.get('source');
+        const sourceColumnId = source?.port?.replace(/__(left|right)$/, '');
+        const targetColumnId = target?.port?.replace(/__(left|right)$/, '');
+        if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) {
+          
+          link.remove();
+          return;
+        }
+        const key = [sourceColumnId, targetColumnId].sort().join('::');
+        const duplicateLink = graph.getLinks().find((l) => {
+          if (l.id === link.id) return false;
+          const d = l.get('data');
+          if (!d?.sourceColumnId || !d?.targetColumnId) return false;
+          return [d.sourceColumnId, d.targetColumnId].sort().join('::') === key;
+        });
+        if (duplicateLink) {
+          const duplicateLinkView = paper.findViewByModel(duplicateLink);
+          const lineNode = duplicateLinkView?.el?.querySelector('[joint-selector="line"]');
+          if (lineNode) {
+            lineNode.classList.add('edge-duplicate-warning');
+            setTimeout(() => {
+              lineNode.classList.remove('edge-duplicate-warning');
+            }, 500);
+          }
+          link.remove();
+          return;
+        }
+        syncLinkTypeAndData(link);
+      }
+    });
+    paper.on('link:connect', clearPortHighlight);
+    paper.on('link:connect', (linkView) => {
+      linkView.el.style.removeProperty('opacity');
+      syncLinkTypeAndData(linkView.model);
       emitChange();
     });
 
@@ -303,7 +450,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       renderAllTables();
 
     }
-    
+
     document.addEventListener('keydown', handleKeydown);
 
     return () => {

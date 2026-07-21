@@ -251,6 +251,44 @@ h1, h2, h3 {
     filter: drop-shadow(0 0 11px rgba(167, 139, 250, 0.9));
   }
 }
+/* Duplicate-relationship warning pulse on an existing edge */
+.edge-duplicate-warning {
+  stroke: #ef4444 !important;
+  stroke-width: 2.2;
+  animation: edge-duplicate-pulse 0.6s ease-in-out 1;
+}
+@keyframes edge-duplicate-pulse {
+  0%, 100% {
+    opacity: 1;
+    stroke: #ef4444;
+    stroke-width: 2.2;
+    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.5));
+  }
+  25% {
+    opacity: 1;
+    stroke: #7f1d1d;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.75));
+  }
+  40% {
+    opacity: 1;
+    stroke: #fca5a5;
+    stroke-width: 2.4;
+    filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.6));
+  }
+  60% {
+    opacity: 1;
+    stroke: #7f1d1d;
+    stroke-width: 3.6;
+    filter: drop-shadow(0 0 16px rgba(239, 68, 68, 1));
+  }
+  80% {
+    opacity: 1;
+    stroke: #ef4444;
+    stroke-width: 2.2;
+    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.5));
+  }
+}
 
 .react-flow__handle.valid,
 div.react-flow__handle.valid {
@@ -288,6 +326,13 @@ div.react-flow__handle.invalid {
 }
 
 /* Port hover feedback */
+.port-snap-active {
+  fill: #7c4df2 !important;
+  r: 7;
+  filter: drop-shadow(0 0 6px rgba(124, 77, 242, 0.75));
+  transition: fill 100ms ease, filter 100ms ease;
+}
+
 .joint-port-body:hover {
   fill: #7c4df2 !important;
   r: 6;

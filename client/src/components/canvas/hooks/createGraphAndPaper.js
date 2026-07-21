@@ -22,15 +22,21 @@ export function createGraphAndPaper({ paperEl, GRID_SIZE, namespace }) {
     defaultConnectionPoint: { name: 'boundary' },
     linkPinning: false,
     snapLinks: { radius: 20 },
+
+    connectionStrategy: (end, view, magnet) => {
+      if (magnet && magnet.getAttribute('port')) return end;
+      return end;
+    },
     markAvailable: true,
     interactive: (cellView) => (cellView.model.isLink() ? { vertexAdd: false } : true),
     validateConnection: (srcView, srcMagnet, tgtView, tgtMagnet) => {
-      if (srcView === tgtView || !srcMagnet || !tgtMagnet) return false;
+      if (!srcMagnet || !tgtMagnet) return false;
       const sourcePortId = srcMagnet.getAttribute('port');
       const targetPortId = tgtMagnet.getAttribute('port');
       if (!sourcePortId || !targetPortId) return false;
       const sourceColumnId = sourcePortId.replace(/__(left|right)$/, '');
       const targetColumnId = targetPortId.replace(/__(left|right)$/, '');
+
       if (sourceColumnId === targetColumnId) return false;
       const key = relationshipKey(sourceColumnId, targetColumnId);
       const exists = graph.getLinks().some(

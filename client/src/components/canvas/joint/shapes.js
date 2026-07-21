@@ -102,7 +102,14 @@ export const Relationship = dia.Link.define(
   {
     router: {
       name: 'manhattan',
-      args: { padding: 20, step: 20, maximumLoops: 2000, perpendicular: true },
+      args: {
+        padding: 20,
+        step: 20,
+        maximumLoops: 2000,
+        perpendicular: true,
+        startDirections: ['left', 'right'],
+        endDirections: ['left', 'right'],
+      },
     },
     connector: { name: 'rounded', args: { radius: 12 } },
     attrs: {
@@ -154,6 +161,13 @@ export function setSelected(link, selected) {
 export function manhattanRouter(sourcePort, targetPort) {
   return {
     name: 'manhattan',
-    args: { padding: 20, step: 20, maximumLoops: 2000, perpendicular: true },
+    args: {
+      padding: 20,
+      step: 20,
+      maximumLoops: 2000,
+      perpendicular: true,
+      startDirections: ['left', 'right'],
+      endDirections: ['left', 'right'],
+    },
   };
 }

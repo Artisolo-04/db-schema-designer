@@ -28,6 +28,10 @@ export function loadInitialGraph({ graph, resizeForColumns, GRID_SIZE, initialNo
       console.warn('[Canvas] Skipped edge with missing column ids:', edge);
       return;
     }
+    if (data.sourceColumnId === data.targetColumnId) {
+      console.warn('[Canvas] Dropped stale self-loop edge (sourceColumnId === targetColumnId):', edge);
+      return;
+    }
     const sourceSide = data.sourceSide || 'right';
     const targetSide = data.targetSide || 'left';
     const sourcePort = `${data.sourceColumnId}__${sourceSide}`;
