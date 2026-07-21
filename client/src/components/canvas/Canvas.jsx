@@ -12,6 +12,7 @@ import { setupResizeObserver } from './hooks/setupResizeObserver.js';
 import { loadInitialGraph } from './hooks/loadInitialGraph.js';
 import { setupGlobalReroute } from './hooks/setupGlobalReroute.js';
 import { createGraphAndPaper } from './hooks/createGraphAndPaper.js';
+import { resolveGrowthCollision } from './hooks/resolveGrowthCollision.js';
 
 function relationshipKey(sourceColumnId, targetColumnId) {
   return [sourceColumnId, targetColumnId].sort().join('::');
@@ -91,6 +92,13 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       });
 
       graph.stopBatch('resize-columns');
+
+      resolveGrowthCollision({
+        el,
+        otherRects: otherRects(el.id),
+        gridSize: GRID_SIZE,
+        onComplete: emitChange,
+      });
     }
 
     function applySelfLoopRouting(link) {
