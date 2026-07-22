@@ -120,11 +120,20 @@ export const Relationship = dia.Link.define(
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
         fill: 'none',
+
+        sourceMarker: {
+          type: 'path',
+          d: 'M 14,0 L 0,-7 M 14,0 L 0,0 M 14,0 L 0,7',
+          fill: 'none',
+          stroke: '#7357ff',
+          'stroke-width': 1.8,
+        },
         targetMarker: {
           type: 'path',
-          d: 'M 10 -5 0 0 10 5 Z',
-          fill: '#7357ff',
-          stroke: 'none',
+          d: 'M 8,-6 L 8,6',
+          fill: 'none',
+          stroke: '#7357ff',
+          'stroke-width': 1.8,
         },
       },
       wrapper: {
