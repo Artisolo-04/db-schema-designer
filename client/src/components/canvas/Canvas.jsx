@@ -30,12 +30,14 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef, openEdgeId }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onEdgeSelectRef = useRef(onEdgeSelect);
   onEdgeSelectRef.current = onEdgeSelect;
+  const openEdgeIdRef = useRef(openEdgeId);
+  openEdgeIdRef.current = openEdgeId;
   const zoomActionsRef = useRef({});
   const minimapContainerRef = useRef(null);
 
@@ -211,6 +213,18 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       renderAllTables();
       emitChange();
 
+      const openLinkId = openEdgeIdRef.current;
+      if (openLinkId) {
+        const openLink = graph.getCell(openLinkId);
+        if (openLink && openLink.isLink && openLink.isLink()) {
+          const openSource = openLink.get('source');
+          const openTarget = openLink.get('target');
+          if (openSource?.id === id || openTarget?.id === id) {
+            onEdgeSelectRef.current?.(buildEdgeDescriptor(openLink));
+          }
+        }
+      }
+
       changedTypeColumnIds.forEach((columnId) => {
         const newType = (nextData.columns || []).find((c) => c.id === columnId)?.type;
         if (!newType) return;
@@ -296,6 +310,10 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
         targetTableColumns: (targetEl?.get('data')?.columns || []).map((c) => ({ id: c.id, name: c.name })),
         sourceColumnType: sourceColumn?.type || null,
         targetColumnType: targetColumn?.type || null,
+        sourceIsNotNull: !!sourceColumn?.isNotNull,
+        targetIsNotNull: !!targetColumn?.isNotNull,
+        sourceIsReferenceable: !!(sourceColumn?.isPrimaryKey || sourceColumn?.isUnique),
+        targetIsReferenceable: !!(targetColumn?.isPrimaryKey || targetColumn?.isUnique),
         relationshipType: data.relationshipType || 'one-to-many',
         onDelete: data.onDelete || 'CASCADE',
         onUpdate: data.onUpdate || 'CASCADE',
@@ -579,7 +597,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
         const sourceColumnId = source?.port?.replace(/__(left|right)$/, '');
         const targetColumnId = target?.port?.replace(/__(left|right)$/, '');
         if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) {
-          
+
           link.remove();
           return;
         }

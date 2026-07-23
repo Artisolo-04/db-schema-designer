@@ -5,8 +5,7 @@ function quoteIdent(name) {
 
 function columnLine(col) {
   const parts = [quoteIdent(col.name), col.type || 'text'];
-  if (col.isPrimaryKey) parts.push('PRIMARY KEY');
-  if (col.isNotNull && !col.isPrimaryKey) parts.push('NOT NULL');
+  if (col.isNotNull || col.isPrimaryKey) parts.push('NOT NULL');
   if (col.isUnique && !col.isPrimaryKey) parts.push('UNIQUE');
   return `  ${parts.join(' ')}`;
 }
@@ -44,10 +43,18 @@ export function generateDDL(tables = [], edges = []) {
 
   const createStatements = tables.map((table) => {
     const columns = table.data?.columns || [];
-    const body = columns.length
-      ? columns.map(columnLine).join(',\n')
-      : '  -- no columns yet';
-    return `CREATE TABLE ${quoteIdent(table.data?.name)} (\n${body}\n);`;
+    const pkColumns = columns.filter((c) => c.isPrimaryKey);
+
+    const lines = columns.length
+      ? columns.map(columnLine)
+      : ['  -- no columns yet'];
+
+    if (pkColumns.length > 0) {
+      const pkNames = pkColumns.map((c) => quoteIdent(c.name)).join(', ');
+      lines.push(`  PRIMARY KEY (${pkNames})`);
+    }
+
+    return `CREATE TABLE ${quoteIdent(table.data?.name)} (\n${lines.join(',\n')}\n);`;
   });
 
   const fkStatements = edges

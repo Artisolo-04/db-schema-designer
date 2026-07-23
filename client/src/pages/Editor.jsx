@@ -195,6 +195,7 @@ export default function Editor() {
             onChange={handleCanvasChange}
             onEdgeSelect={setSelectedEdge}
             relationshipApiRef={relationshipApiRef}
+            openEdgeId={selectedEdge?.linkId ?? null}
           />
         </div>
 

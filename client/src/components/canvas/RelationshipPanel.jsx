@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { usePresence } from './hooks/usePresence.js';
 import { AlertTriangle, ArrowLeftRight, Check, Copy, GitCommit, GitFork, Shuffle, Table2, Terminal, Trash2, X } from 'lucide-react';
 import Dropdown from './Dropdown.jsx';
 import { buildForeignKeyClause } from '../../utils/generateDDL.js';
@@ -124,10 +125,25 @@ export default function RelationshipPanel({
     });
   }, [edge]);
 
-  if (!edge) return null;
+  const typeMismatch = !!edge && edge.sourceColumnType && edge.targetColumnType && edge.sourceColumnType !== edge.targetColumnType;
+  const badges = edge ? (CARDINALITY_BADGES[edge.relationshipType] || CARDINALITY_BADGES['one-to-many']) : CARDINALITY_BADGES['one-to-many'];
 
-  const typeMismatch = edge.sourceColumnType && edge.targetColumnType && edge.sourceColumnType !== edge.targetColumnType;
-  const badges = CARDINALITY_BADGES[edge.relationshipType] || CARDINALITY_BADGES['one-to-many'];
+  const childIsSource = !!edge && !(!edge.targetIsReferenceable && edge.sourceIsReferenceable);
+  const childIsNotNull = !!edge && (childIsSource ? edge.sourceIsNotNull : edge.targetIsNotNull);
+  const childLabel = edge
+    ? (childIsSource
+        ? `${edge.sourceTableName}.${edge.sourceColumnName}`
+        : `${edge.targetTableName}.${edge.targetColumnName}`)
+    : '';
+  const nullConflict = !!edge && childIsNotNull && (edge.onDelete === 'SET NULL' || edge.onUpdate === 'SET NULL');
+  const nullConflictAction = edge && edge.onDelete === 'SET NULL' && edge.onUpdate === 'SET NULL'
+    ? 'ON DELETE and ON UPDATE are'
+    : edge && edge.onDelete === 'SET NULL' ? 'ON DELETE is' : 'ON UPDATE is';
+
+  const typeMismatchPresence = usePresence(typeMismatch);
+  const nullConflictPresence = usePresence(nullConflict);
+
+  if (!edge) return null;
 
   async function copySql() {
     try {
@@ -164,8 +180,13 @@ export default function RelationshipPanel({
         />
       </div>
 
-      {typeMismatch && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+      {typeMismatchPresence.mounted && (
+        <div
+          key="type-mismatch-warning"
+          className={`flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 ${
+            typeMismatchPresence.leaving ? 'warning-banner-leaving' : 'warning-banner'
+          }`}
+        >
           <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-300 leading-relaxed">
             Column type mismatch: <span className="font-mono">{edge.sourceColumnType}</span> vs{' '}
@@ -173,6 +194,21 @@ export default function RelationshipPanel({
           </div>
         </div>
       )}
+
+        {nullConflictPresence.mounted && (
+          <div
+            key="null-conflict-warning"
+            className={`flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 ${
+              nullConflictPresence.leaving ? 'warning-banner-leaving' : 'warning-banner'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-amber-300 leading-relaxed">
+              <span className="font-mono">{childLabel}</span> is NOT NULL but {nullConflictAction} SET NULL.
+              This will fail at runtime — remove NOT NULL on that column or choose a different action.
+            </div>
+          </div>
+        )}
 
       <div className="flex flex-col gap-2">
         {RELATIONSHIP_TYPES.map(({ value, label, desc, icon: Icon }) => {
