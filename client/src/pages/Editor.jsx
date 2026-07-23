@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, LayoutGrid, Code2, Copy, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import Modal from '../components/Modal.jsx';
+import SqlPreview from '../components/SqlPreview.jsx';
 import { fetchProjectData, saveProjectData } from '../api/projects.js';
 import { getErrorMessage } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { generateDDL } from '../utils/generateDDL.js';
+import { validateSchema } from '../utils/validateSchema.js';
 
 const SAVE_DELAY_MS = 1200;
 
@@ -29,7 +31,7 @@ export default function Editor() {
 
   const [sqlOpen, setSqlOpen] = useState(false);
   const [sqlText, setSqlText] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [sqlWarnings, setSqlWarnings] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,18 +132,8 @@ export default function Editor() {
   function openSql() {
     const { nodes, edges } = latestStateRef.current;
     setSqlText(generateDDL(nodes, edges));
-    setCopied(false);
+    setSqlWarnings(validateSchema(nodes, edges));
     setSqlOpen(true);
-  }
-
-  async function copySql() {
-    try {
-      await navigator.clipboard.writeText(sqlText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('Could not copy to clipboard', 'error');
-    }
   }
 
   if (loading) {
@@ -217,14 +209,21 @@ export default function Editor() {
         </div>
       </div>
 
-      <Modal open={sqlOpen} title="Generated SQL" onClose={() => setSqlOpen(false)}>
-        <pre className="max-h-96 overflow-auto text-xs bg-surface-2 border border-surface-border rounded-lg p-3 text-slate-300 whitespace-pre-wrap">
-          {sqlText}
-        </pre>
-        <button onClick={copySql} className="btn-primary w-full mt-4">
-          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-          {copied ? 'Copied' : 'Copy to clipboard'}
-        </button>
+      <Modal open={sqlOpen} title="Generated SQL" onClose={() => setSqlOpen(false)} maxWidthClass="max-w-2xl">
+        {sqlWarnings.length > 0 && (
+          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {sqlWarnings.length} issue{sqlWarnings.length > 1 ? 's' : ''} found
+            </div>
+            <ul className="mt-1.5 space-y-1 pl-6 list-disc text-xs text-amber-300/90 leading-relaxed">
+              {sqlWarnings.map((w, i) => (
+                <li key={`${w.edgeId}-${i}`}>{w.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <SqlPreview sql={sqlText} filename="schema.sql" maxHeightClass="max-h-96 overflow-auto" />
       </Modal>
     </div>
   );
