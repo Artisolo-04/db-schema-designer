@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, LayoutGrid, Code2, Copy, Check, Loader2 } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
+import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import Modal from '../components/Modal.jsx';
 import { fetchProjectData, saveProjectData } from '../api/projects.js';
 import { getErrorMessage } from '../api/client.js';
@@ -16,6 +17,7 @@ export default function Editor() {
   const { showToast } = useToast();
 
   const addTableRef = useRef(null);
+  const relationshipApiRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const latestStateRef = useRef({ nodes: [], edges: [] });
 
@@ -23,6 +25,7 @@ export default function Editor() {
   const [initialNodes, setInitialNodes] = useState([]);
   const [initialEdges, setInitialEdges] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [selectedEdge, setSelectedEdge] = useState(null);
 
   const [sqlOpen, setSqlOpen] = useState(false);
   const [sqlText, setSqlText] = useState('');
@@ -80,6 +83,50 @@ export default function Editor() {
     [projectId, showToast]
   );
 
+  function handleRelationshipTypeChange(type) {
+    if (!selectedEdge) return;
+    if (type === 'many-to-many') {
+      relationshipApiRef.current?.convertToManyToMany(selectedEdge.linkId);
+      setSelectedEdge(null);
+      return;
+    }
+    relationshipApiRef.current?.updateRelationship(selectedEdge.linkId, { relationshipType: type });
+    setSelectedEdge((prev) => (prev ? { ...prev, relationshipType: type } : prev));
+  }
+
+  function handleOnDeleteChange(value) {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.updateRelationship(selectedEdge.linkId, { onDelete: value });
+    setSelectedEdge((prev) => (prev ? { ...prev, onDelete: value } : prev));
+  }
+
+  function handleOnUpdateChange(value) {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.updateRelationship(selectedEdge.linkId, { onUpdate: value });
+    setSelectedEdge((prev) => (prev ? { ...prev, onUpdate: value } : prev));
+  }
+
+  function handleChangeSourceColumn(columnId) {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.changeRelationshipColumn(selectedEdge.linkId, 'source', columnId);
+  }
+
+  function handleChangeTargetColumn(columnId) {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.changeRelationshipColumn(selectedEdge.linkId, 'target', columnId);
+  }
+
+  function handleReverseRelationship() {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.swapRelationshipEndpoints(selectedEdge.linkId);
+  }
+
+  function handleDeleteRelationship() {
+    if (!selectedEdge) return;
+    relationshipApiRef.current?.deleteRelationship(selectedEdge.linkId);
+    setSelectedEdge(null);
+  }
+
   function openSql() {
     const { nodes, edges } = latestStateRef.current;
     setSqlText(generateDDL(nodes, edges));
@@ -136,13 +183,37 @@ export default function Editor() {
         </div>
       </header>
 
-      <div className="flex-1 min-h-0">
-        <Canvas
-          initialNodes={initialNodes}
-          initialEdges={initialEdges}
-          onAddTableRef={addTableRef}
-          onChange={handleCanvasChange}
-        />
+      <div className="flex-1 min-h-0 flex">
+        <div
+          className="h-full min-w-0 transition-[flex-basis] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ flexBasis: selectedEdge ? '75%' : '100%' }}
+        >
+          <Canvas
+            initialNodes={initialNodes}
+            initialEdges={initialEdges}
+            onAddTableRef={addTableRef}
+            onChange={handleCanvasChange}
+            onEdgeSelect={setSelectedEdge}
+            relationshipApiRef={relationshipApiRef}
+          />
+        </div>
+
+        <div
+          className="h-full shrink-0 overflow-hidden border-l border-surface-border bg-surface-1 transition-[flex-basis] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ flexBasis: selectedEdge ? '25%' : '0%' }}
+        >
+          <RelationshipPanel
+            edge={selectedEdge}
+            onChangeType={handleRelationshipTypeChange}
+            onChangeOnDelete={handleOnDeleteChange}
+            onChangeOnUpdate={handleOnUpdateChange}
+            onChangeSourceColumn={handleChangeSourceColumn}
+            onChangeTargetColumn={handleChangeTargetColumn}
+            onReverse={handleReverseRelationship}
+            onDelete={handleDeleteRelationship}
+            onClose={() => setSelectedEdge(null)}
+          />
+        </div>
       </div>
 
       <Modal open={sqlOpen} title="Generated SQL" onClose={() => setSqlOpen(false)}>

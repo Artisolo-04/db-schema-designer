@@ -1,4 +1,4 @@
-export function setupSelection({ graph, paper, setSelected, blurActiveInput }) {
+export function setupSelection({ graph, paper, setSelected, blurActiveInput, onSelectionChange }) {
   let selectedCell = null;
   let selectedOriginalZ = null;
 
@@ -52,6 +52,7 @@ export function setupSelection({ graph, paper, setSelected, blurActiveInput }) {
     }
     clearLinksDimmed();
     selectedCell = null;
+    onSelectionChange?.(null);
   }
 
   function selectCell(cell) {
@@ -65,6 +66,7 @@ export function setupSelection({ graph, paper, setSelected, blurActiveInput }) {
     } else {
       paper.findViewByModel(cell)?.el.classList.add('joint-selected');
     }
+    onSelectionChange?.(cell);
   }
 
   paper.on('element:pointerdown', (cellView) => { blurActiveInput(); selectCell(cellView.model); });

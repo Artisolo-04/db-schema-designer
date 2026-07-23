@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { dia } from '@joint/core';
-import { Table, Relationship, buildPortItems, computeTableHeight, TABLE_WIDTH, setSelected, manhattanRouter } from './joint/shapes.js';
+import { Table, Relationship, buildPortItems, computeTableHeight, TABLE_WIDTH, setSelected, manhattanRouter, applyRelationshipVisuals } from './joint/shapes.js';
 import TableElementView from './joint/TableElementView.jsx';
-import { createDefaultTable } from '../../utils/schemaDefaults.js';
+import { createDefaultTable, createDefaultColumn, generateId } from '../../utils/schemaDefaults.js';
 import { collidesWithAny, findFreePosition, rectFromPosition } from '../../utils/collision.js';
 import { setupMinimap } from './hooks/setupMinimap.js';
 import { setupZoom } from './hooks/setupZoom.js';
@@ -30,10 +30,12 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onEdgeSelectRef = useRef(onEdgeSelect);
+  onEdgeSelectRef.current = onEdgeSelect;
   const zoomActionsRef = useRef({});
   const minimapContainerRef = useRef(null);
 
@@ -267,12 +269,159 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
         source: { id: sourceEl.id, port: sourcePort },
         target: { id: targetEl.id, port: targetPort },
         router: manhattanRouter(sourcePort, targetPort),
-        data: { sourceColumnId, targetColumnId, sourceSide: 'right', targetSide: 'left' },
+        data: { sourceColumnId, targetColumnId, sourceSide: 'right', targetSide: 'left', relationshipType: 'one-to-many', onDelete: 'CASCADE', onUpdate: 'CASCADE' },
       });
 
       newLink.addTo(graph);
+      applyRelationshipVisuals(newLink);
       applySelfLoopRouting(newLink);
       emitChange();
+    }
+
+    function buildEdgeDescriptor(link) {
+      const data = link.get('data') || {};
+      const sourceEl = graph.getCell(link.get('source')?.id);
+      const targetEl = graph.getCell(link.get('target')?.id);
+      const sourceColumn = (sourceEl?.get('data')?.columns || []).find((c) => c.id === data.sourceColumnId);
+      const targetColumn = (targetEl?.get('data')?.columns || []).find((c) => c.id === data.targetColumnId);
+      return {
+        linkId: link.id,
+        sourceTableName: sourceEl?.get('data')?.name || 'table',
+        sourceColumnId: data.sourceColumnId,
+        sourceColumnName: sourceColumn?.name || data.sourceColumnId,
+        sourceTableColumns: (sourceEl?.get('data')?.columns || []).map((c) => ({ id: c.id, name: c.name })),
+        targetTableName: targetEl?.get('data')?.name || 'table',
+        targetColumnId: data.targetColumnId,
+        targetColumnName: targetColumn?.name || data.targetColumnId,
+        targetTableColumns: (targetEl?.get('data')?.columns || []).map((c) => ({ id: c.id, name: c.name })),
+        sourceColumnType: sourceColumn?.type || null,
+        targetColumnType: targetColumn?.type || null,
+        relationshipType: data.relationshipType || 'one-to-many',
+        onDelete: data.onDelete || 'CASCADE',
+        onUpdate: data.onUpdate || 'CASCADE',
+      };
+    }
+
+    function updateRelationship(linkId, patch) {
+      const link = graph.getCell(linkId);
+      if (!link) return;
+      link.set('data', { ...link.get('data'), ...patch });
+      applyRelationshipVisuals(link);
+      emitChange();
+      onEdgeSelectRef.current?.(buildEdgeDescriptor(link));
+    }
+
+    function deleteRelationship(linkId) {
+      graph.getCell(linkId)?.remove();
+      onEdgeSelectRef.current?.(null);
+    }
+
+    function changeRelationshipColumn(linkId, side, newColumnId) {
+      const link = graph.getCell(linkId);
+      if (!link) return;
+      const endpoint = side === 'source' ? link.get('source') : link.get('target');
+      if (!endpoint?.id) return;
+      const newPort = side === 'source' ? `${newColumnId}__right` : `${newColumnId}__left`;
+      link.set(side, { id: endpoint.id, port: newPort });
+      syncLinkTypeAndData(link);
+      onEdgeSelectRef.current?.(buildEdgeDescriptor(link));
+    }
+
+    function convertToManyToMany(linkId) {
+      const link = graph.getCell(linkId);
+      if (!link) return;
+      const sourceEl = graph.getCell(link.get('source')?.id);
+      const targetEl = graph.getCell(link.get('target')?.id);
+      if (!sourceEl || !targetEl) return;
+
+      const sourceData = sourceEl.get('data') || {};
+      const targetData = targetEl.get('data') || {};
+      const sourceCols = sourceData.columns || [];
+      const targetCols = targetData.columns || [];
+      const sourcePk = sourceCols.find((c) => c.isPrimaryKey) || sourceCols[0];
+      const targetPk = targetCols.find((c) => c.isPrimaryKey) || targetCols[0];
+      if (!sourcePk || !targetPk) return;
+
+      link.remove();
+
+      const existingNames = new Set(graph.getElements().map((el) => el.get('data')?.name));
+      let junctionName = `${sourceData.name}_${targetData.name}`;
+      let n = 2;
+      while (existingNames.has(junctionName)) {
+        junctionName = `${sourceData.name}_${targetData.name}_${n}`;
+        n += 1;
+      }
+
+      let fk1Name = `${sourceData.name}_id`;
+      let fk2Name = `${targetData.name}_id`;
+      if (fk1Name === fk2Name) fk2Name = `${targetData.name}_id_2`;
+
+      const fk1 = createDefaultColumn({ name: fk1Name, type: sourcePk.type, isPrimaryKey: true, isNotNull: true });
+      const fk2 = createDefaultColumn({ name: fk2Name, type: targetPk.type, isPrimaryKey: true, isNotNull: true });
+
+      const srcPos = sourceEl.position();
+      const tgtPos = targetEl.position();
+      let position = {
+        x: Math.round((srcPos.x + tgtPos.x) / 2 / GRID_SIZE) * GRID_SIZE,
+        y: Math.round((Math.max(srcPos.y, tgtPos.y) + 240) / GRID_SIZE) * GRID_SIZE,
+      };
+      const junctionRects = otherRects('**none**');
+      while (collidesWithAny(rectFromPosition(position, { width: TABLE_WIDTH, height: computeTableHeight(2) }), junctionRects)) {
+        position = { x: position.x, y: position.y + GRID_SIZE * 4 };
+      }
+
+      const junctionEl = new Table({
+        id: generateId('table'),
+        position,
+        data: { name: junctionName, columns: [fk1, fk2] },
+      });
+      resizeForColumns(junctionEl);
+      junctionEl.addTo(graph);
+
+      function linkJunctionTo(parentEl, fkColumn, parentColumn) {
+        const sourcePort = `${fkColumn.id}__right`;
+        const targetPort = `${parentColumn.id}__left`;
+        const newLink = new Relationship({
+          source: { id: junctionEl.id, port: sourcePort },
+          target: { id: parentEl.id, port: targetPort },
+          router: manhattanRouter(sourcePort, targetPort),
+          data: {
+            sourceColumnId: fkColumn.id,
+            targetColumnId: parentColumn.id,
+            sourceSide: 'right',
+            targetSide: 'left',
+            relationshipType: 'one-to-many',
+            onDelete: 'CASCADE',
+            onUpdate: 'CASCADE',
+          },
+        });
+        newLink.addTo(graph);
+        applyRelationshipVisuals(newLink);
+      }
+
+      linkJunctionTo(sourceEl, fk1, sourcePk);
+      linkJunctionTo(targetEl, fk2, targetPk);
+
+      renderAllTables();
+      emitChange();
+      onEdgeSelectRef.current?.(null);
+    }
+
+    function swapRelationshipEndpoints(linkId) {
+      const link = graph.getCell(linkId);
+      if (!link) return;
+      const source = link.get('source');
+      const target = link.get('target');
+      if (!source?.id || !target?.id) return;
+      link.set('source', target);
+      link.set('target', source);
+      syncLinkTypeAndData(link);
+      applyRelationshipVisuals(link);
+      onEdgeSelectRef.current?.(buildEdgeDescriptor(link));
+    }
+
+    if (relationshipApiRef) {
+      relationshipApiRef.current = { updateRelationship, deleteRelationship, changeRelationshipColumn, convertToManyToMany, swapRelationshipEndpoints };
     }
 
     function addTable() {
@@ -295,11 +444,19 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     const { teardownResizeObserver } = setupResizeObserver({ paper, container });
 
     loadInitialGraph({ graph, resizeForColumns, GRID_SIZE, initialNodes, initialEdges });
+    graph.getLinks().forEach((link) => applyRelationshipVisuals(link));
     renderAllTables();
     zoomToFit();
 
     const { teardownGlobalReroute } = setupGlobalReroute({ graph, paper });
-    const { getSelectedCell, clearSelectionSelectedRef } = setupSelection({ graph, paper, setSelected, blurActiveInput });
+    const { getSelectedCell, clearSelectionSelectedRef } = setupSelection({
+      graph, paper, setSelected, blurActiveInput,
+      onSelectionChange: (cell) => {
+        if (cell?.isLink()) {
+          onEdgeSelectRef.current?.(buildEdgeDescriptor(cell));
+        }
+      },
+    });
     const { teardownDragAndPan } = setupDragAndPan({ graph, paper, container, GRID_SIZE, otherRects, emitChange, blurActiveInput });
 
     let highlightedPortNode = null;
@@ -388,7 +545,18 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       const targetColumnId = targetMatch[1];
       const sourceSide = sourceMatch[2];
       const targetSide = targetMatch[2];
-      link.set('data', { ...link.get('data'), sourceColumnId, targetColumnId, sourceSide, targetSide });
+      const existingLinkData = link.get('data') || {};
+      link.set('data', {
+        ...existingLinkData,
+        sourceColumnId,
+        targetColumnId,
+        sourceSide,
+        targetSide,
+        relationshipType: existingLinkData.relationshipType || 'one-to-many',
+        onDelete: existingLinkData.onDelete || 'CASCADE',
+        onUpdate: existingLinkData.onUpdate || 'CASCADE',
+      });
+      applyRelationshipVisuals(link);
       const targetEl = graph.getCell(target.id);
       const targetColumn = (targetEl?.get('data')?.columns || []).find((c) => c.id === targetColumnId);
       if (targetColumn) {
@@ -453,10 +621,11 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
       const selectedCell = getSelectedCell();
       if (!selectedCell) return;
+      const wasLink = selectedCell.isLink();
       selectedCell.remove();
       clearSelectionSelectedRef();
       renderAllTables();
-
+      if (wasLink) onEdgeSelectRef.current?.(null);
     }
 
     document.addEventListener('keydown', handleKeydown);

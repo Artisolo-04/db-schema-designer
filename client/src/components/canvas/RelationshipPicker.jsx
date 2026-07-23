@@ -3,6 +3,8 @@ import { Link2, Search } from 'lucide-react';
 
 const VISIBLE_ROWS = 6;
 const ROW_HEIGHT = 32;
+const LIST_PADDING = 8;
+const ITEM_GAP = 4;
 
 export default function RelationshipPicker({ targets, onSelect, onOpen }) {
   const [open, setOpen] = useState(false);
@@ -110,9 +112,9 @@ export default function RelationshipPicker({ targets, onSelect, onOpen }) {
 
           <div
             ref={listRef}
-            className="custom-scroll nowheel overflow-y-auto p-1"
+            className="custom-scroll nowheel overflow-y-auto p-1 flex flex-col gap-1"
             onWheel={handleWheel}
-            style={{ maxHeight: VISIBLE_ROWS * ROW_HEIGHT }}
+            style={{ maxHeight: Math.min(filtered.length, VISIBLE_ROWS) * ROW_HEIGHT + Math.max(Math.min(filtered.length, VISIBLE_ROWS) - 1, 0) * ITEM_GAP + LIST_PADDING }}
           >
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-xs text-slate-500 italic">No matches</div>
@@ -124,11 +126,11 @@ export default function RelationshipPicker({ targets, onSelect, onOpen }) {
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => selectTarget(column.id)}
                   className={`w-full flex items-center px-2.5 rounded-lg text-left text-xs
-                    transition-colors mb-0.5 last:mb-0
+                    transition-colors
                     ${i === highlight
                       ? 'bg-brand-500/15 text-brand-200'
                       : 'text-slate-300 hover:bg-surface-3 hover:text-slate-100'}`}
-                  style={{ height: ROW_HEIGHT }}
+                  style={{ height: ROW_HEIGHT, flexShrink: 0 }}
                 >
                   <span className="truncate">
                     <span className="text-slate-500">{tableName}.</span>{column.name}

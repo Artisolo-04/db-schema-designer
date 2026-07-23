@@ -1,5 +1,3 @@
-
-
 function quoteIdent(name) {
   const clean = (name || '').trim();
   return `"${clean || 'unnamed'}"`;
@@ -11,6 +9,25 @@ function columnLine(col) {
   if (col.isNotNull && !col.isPrimaryKey) parts.push('NOT NULL');
   if (col.isUnique && !col.isPrimaryKey) parts.push('UNIQUE');
   return `  ${parts.join(' ')}`;
+}
+
+export function buildForeignKeyClause({
+  childTableName,
+  childColumnName,
+  parentTableName,
+  parentColumnName,
+  constraintName,
+  onDelete = 'CASCADE',
+  onUpdate = 'CASCADE',
+}) {
+  return (
+    `ALTER TABLE ${quoteIdent(childTableName)}\n` +
+    `  ADD CONSTRAINT ${quoteIdent(constraintName)}\n` +
+    `  FOREIGN KEY (${quoteIdent(childColumnName)})\n` +
+    `  REFERENCES ${quoteIdent(parentTableName)}(${quoteIdent(parentColumnName)})\n` +
+    `  ON DELETE ${onDelete}\n` +
+    `  ON UPDATE ${onUpdate};`
+  );
 }
 
 export function generateDDL(tables = [], edges = []) {
@@ -33,7 +50,7 @@ export function generateDDL(tables = [], edges = []) {
     return `CREATE TABLE ${quoteIdent(table.data?.name)} (\n${body}\n);`;
   });
 
-const fkStatements = edges
+  const fkStatements = edges
     .map((edge, i) => {
       const from = columnById[edge.data?.sourceColumnId];
       const to = columnById[edge.data?.targetColumnId];
@@ -50,12 +67,15 @@ const fkStatements = edges
       }
 
       const constraintName = `fk_${child.table.data.name}_${child.column.name}_${i}`;
-      return (
-        `ALTER TABLE ${quoteIdent(child.table.data.name)}\n` +
-        `  ADD CONSTRAINT ${quoteIdent(constraintName)}\n` +
-        `  FOREIGN KEY (${quoteIdent(child.column.name)})\n` +
-        `  REFERENCES ${quoteIdent(parent.table.data.name)}(${quoteIdent(parent.column.name)});`
-      );
+      return buildForeignKeyClause({
+        childTableName: child.table.data.name,
+        childColumnName: child.column.name,
+        parentTableName: parent.table.data.name,
+        parentColumnName: parent.column.name,
+        constraintName,
+        onDelete: edge.data?.onDelete || 'CASCADE',
+        onUpdate: edge.data?.onUpdate || 'CASCADE',
+      });
     })
     .filter(Boolean);
 

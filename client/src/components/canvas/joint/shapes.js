@@ -180,3 +180,24 @@ export function manhattanRouter(sourcePort, targetPort) {
     },
   };
 }
+
+const ONE_MARKER = { type: 'path', d: 'M 8,-6 L 8,6', fill: 'none', stroke: '#7357ff', 'stroke-width': 1.8 };
+const MANY_MARKER = { type: 'path', d: 'M 14,0 L 0,-7 M 14,0 L 0,0 M 14,0 L 0,7', fill: 'none', stroke: '#7357ff', 'stroke-width': 1.8 };
+
+const CARDINALITY_META = {
+  'one-to-one': { label: '1:1', sourceMarker: ONE_MARKER, targetMarker: ONE_MARKER },
+  'one-to-many': { label: '1:N', sourceMarker: MANY_MARKER, targetMarker: ONE_MARKER },
+  'many-to-many': { label: 'N:M', sourceMarker: MANY_MARKER, targetMarker: MANY_MARKER },
+};
+
+export function applyRelationshipVisuals(link) {
+  const type = link.get('data')?.relationshipType || 'one-to-many';
+  const meta = CARDINALITY_META[type] || CARDINALITY_META['one-to-many'];
+
+  link.attr({
+    line: {
+      sourceMarker: meta.sourceMarker,
+      targetMarker: meta.targetMarker,
+    },
+  });
+}
