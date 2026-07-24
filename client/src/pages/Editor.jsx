@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2 } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import Modal from '../components/Modal.jsx';
@@ -20,6 +20,7 @@ export default function Editor() {
 
   const addTableRef = useRef(null);
   const relationshipApiRef = useRef(null);
+  const undoRedoRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const latestStateRef = useRef({ nodes: [], edges: [] });
 
@@ -28,6 +29,7 @@ export default function Editor() {
   const [initialEdges, setInitialEdges] = useState([]);
   const [saving, setSaving] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState(null);
+  const [undoRedoState, setUndoRedoState] = useState({ canUndo: false, canRedo: false });
 
   const [sqlOpen, setSqlOpen] = useState(false);
   const [sqlText, setSqlText] = useState('');
@@ -60,7 +62,7 @@ export default function Editor() {
       cancelled = true;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-    
+
   }, [projectId]);
 
   const handleCanvasChange = useCallback(
@@ -159,6 +161,24 @@ export default function Editor() {
               </div>
               <span className="text-slate-100 font-medium">Editor</span>
             </div>
+            <div className="flex items-center gap-1.5 ml-1">
+              <button
+                onClick={() => undoRedoRef.current?.undo()}
+                disabled={!undoRedoState.canUndo}
+                title="Undo (Ctrl+Z)"
+                className="w-7 h-7 flex items-center justify-center rounded-md border border-surface-border bg-surface-2 text-slate-500 hover:text-slate-200 hover:bg-surface-3 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-surface-2 transition"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => undoRedoRef.current?.redo()}
+                disabled={!undoRedoState.canRedo}
+                title="Redo (Ctrl+Shift+Z)"
+                className="w-7 h-7 flex items-center justify-center rounded-md border border-surface-border bg-surface-2 text-slate-500 hover:text-slate-200 hover:bg-surface-3 disabled:opacity-30 disabled:hover:text-slate-500 disabled:hover:bg-surface-2 transition"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <span className="text-xs text-slate-500">{saving ? 'Saving…' : 'Saved'}</span>
           </div>
 
@@ -188,6 +208,8 @@ export default function Editor() {
             onEdgeSelect={setSelectedEdge}
             relationshipApiRef={relationshipApiRef}
             openEdgeId={selectedEdge?.linkId ?? null}
+            undoRedoRef={undoRedoRef}
+            onUndoRedoStateChange={setUndoRedoState}
           />
         </div>
 

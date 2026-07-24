@@ -13,6 +13,7 @@ import { loadInitialGraph } from './hooks/loadInitialGraph.js';
 import { setupGlobalReroute } from './hooks/setupGlobalReroute.js';
 import { createGraphAndPaper } from './hooks/createGraphAndPaper.js';
 import { resolveGrowthCollision } from './hooks/resolveGrowthCollision.js';
+import { setupUndoRedo } from './hooks/setupUndoRedo.js';
 
 function relationshipKey(sourceColumnId, targetColumnId) {
   return [sourceColumnId, targetColumnId].sort().join('::');
@@ -30,12 +31,14 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef, openEdgeId }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onEdgeSelectRef = useRef(onEdgeSelect);
   onEdgeSelectRef.current = onEdgeSelect;
+  const onUndoRedoStateChangeRef = useRef(onUndoRedoStateChange);
+  onUndoRedoStateChangeRef.current = onUndoRedoStateChange;
   const openEdgeIdRef = useRef(openEdgeId);
   openEdgeIdRef.current = openEdgeId;
   const zoomActionsRef = useRef({});
@@ -58,6 +61,8 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
 
     const GRID_SIZE = 20;
     const { graph, paper } = createGraphAndPaper({ paperEl, GRID_SIZE, namespace });
+    let undoRedoApi = null;
+    let snapshotTimeout = null;
 
     function otherRects(excludeId) {
       return graph
@@ -129,7 +134,10 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     }
 
     function emitChange() {
-
+      if (undoRedoApi) {
+        if (snapshotTimeout) clearTimeout(snapshotTimeout);
+        snapshotTimeout = setTimeout(() => undoRedoApi.snapshot(), 400);
+      }
       const nodes = graph.getElements().map((el) => ({
         id: el.id,
         type: 'tableNode',
@@ -466,6 +474,20 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     renderAllTables();
     zoomToFit();
 
+    undoRedoApi = setupUndoRedo({
+      graph,
+      onRestore: () => {
+        graph.getLinks().forEach((link) => applyRelationshipVisuals(link));
+        renderAllTables();
+        emitChange();
+      },
+      onStateChange: (state) => onUndoRedoStateChangeRef.current?.(state),
+    });
+
+    if (undoRedoRef) {
+      undoRedoRef.current = { undo: () => undoRedoApi?.undo(), redo: () => undoRedoApi?.redo() };
+    }
+
     const { teardownGlobalReroute } = setupGlobalReroute({ graph, paper });
     const { getSelectedCell, clearSelectionSelectedRef } = setupSelection({
       graph, paper, setSelected, blurActiveInput,
@@ -633,10 +655,21 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     graph.on('remove', () => emitChange());
 
     function handleKeydown(evt) {
+      const active = document.activeElement;
+      const isEditableFocus = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      const isModKey = evt.ctrlKey || evt.metaKey;
+      if (isModKey && !isEditableFocus && (evt.key === 'z' || evt.key === 'Z')) {
+        evt.preventDefault();
+        if (evt.shiftKey) {
+          undoRedoApi?.redo();
+        } else {
+          undoRedoApi?.undo();
+        }
+        return;
+      }
 
       if (evt.key !== 'Backspace' && evt.key !== 'Delete') return;
-      const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      if (isEditableFocus) return;
       const selectedCell = getSelectedCell();
       if (!selectedCell) return;
       const wasLink = selectedCell.isLink();
