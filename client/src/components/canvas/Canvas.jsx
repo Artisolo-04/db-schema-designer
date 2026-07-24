@@ -63,6 +63,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     const { graph, paper } = createGraphAndPaper({ paperEl, GRID_SIZE, namespace });
     let undoRedoApi = null;
     let snapshotTimeout = null;
+    let isInitializing = true;
 
     function otherRects(excludeId) {
       return graph
@@ -134,6 +135,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     }
 
     function emitChange() {
+      if (isInitializing) return;
       if (undoRedoApi) {
         if (snapshotTimeout) clearTimeout(snapshotTimeout);
         snapshotTimeout = setTimeout(() => undoRedoApi.snapshot(), 400);
@@ -473,6 +475,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
     graph.getLinks().forEach((link) => applyRelationshipVisuals(link));
     renderAllTables();
     zoomToFit();
+    isInitializing = false;
 
     undoRedoApi = setupUndoRedo({
       graph,

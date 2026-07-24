@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2 } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import Modal from '../components/Modal.jsx';
@@ -10,6 +10,7 @@ import { getErrorMessage } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { generateDDL } from '../utils/generateDDL.js';
 import { validateSchema } from '../utils/validateSchema.js';
+import { parseSQL } from '../utils/parseSql.js';
 
 const SAVE_DELAY_MS = 1200;
 
@@ -34,6 +35,11 @@ export default function Editor() {
   const [sqlOpen, setSqlOpen] = useState(false);
   const [sqlText, setSqlText] = useState('');
   const [sqlWarnings, setSqlWarnings] = useState([]);
+
+  const [canvasKey, setCanvasKey] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importResult, setImportResult] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +144,48 @@ export default function Editor() {
     setSqlOpen(true);
   }
 
+  function openImport() {
+    setImportText('');
+    setImportResult(null);
+    setImportOpen(true);
+  }
+
+  function closeImport() {
+    setImportOpen(false);
+    setImportText('');
+    setImportResult(null);
+  }
+
+  function handleParseImport() {
+    const result = parseSQL(importText);
+    if (!result.tables.length) {
+      showToast(result.warnings[0] || 'No tables found in SQL', 'error');
+      return;
+    }
+    setImportResult(result);
+  }
+
+  async function handleConfirmImport() {
+    if (!importResult) return;
+    const { tables, edges } = importResult;
+
+    setInitialNodes(tables);
+    setInitialEdges(edges);
+    latestStateRef.current = { nodes: tables, edges };
+    setSelectedEdge(null);
+    setCanvasKey((k) => k + 1);
+    closeImport();
+
+    setSaving(true);
+    try {
+      await saveProjectData(projectId, { tables, edges });
+    } catch (err) {
+      showToast(getErrorMessage(err), 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center gap-2 text-slate-400">
@@ -183,6 +231,10 @@ export default function Editor() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={openImport} className="btn-secondary">
+              <Upload className="w-4 h-4" />
+              Import SQL
+            </button>
             <button onClick={openSql} className="btn-secondary">
               <Code2 className="w-4 h-4" />
               Generate SQL
@@ -201,6 +253,7 @@ export default function Editor() {
           style={{ flexBasis: selectedEdge ? '75%' : '100%' }}
         >
           <Canvas
+            key={canvasKey}
             initialNodes={initialNodes}
             initialEdges={initialEdges}
             onAddTableRef={addTableRef}
@@ -246,6 +299,77 @@ export default function Editor() {
           </div>
         )}
         <SqlPreview sql={sqlText} filename="schema.sql" maxHeightClass="max-h-96 overflow-auto" />
+      </Modal>
+
+      <Modal open={importOpen} title="Import SQL" onClose={closeImport} maxWidthClass="max-w-2xl">
+        {!importResult ? (
+          <>
+            <div className="rounded-xl border border-surface-border overflow-hidden bg-[#0b0b13]">
+              <div className="flex items-center justify-between px-3 py-2 bg-surface-2 border-b border-surface-border">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/70" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/70" />
+                  <span className="ml-1.5 flex items-center gap-1 text-[10px] text-slate-500">
+                    <Terminal className="w-3 h-3" />
+                    import.sql
+                  </span>
+                </div>
+              </div>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder="Paste your CREATE TABLE / ALTER TABLE statements here..."
+                className="w-full h-64 bg-transparent px-3 py-2.5 text-[11px] leading-relaxed text-slate-300 font-mono placeholder:text-slate-600 focus:outline-none resize-none custom-scroll"
+                spellCheck={false}
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={closeImport} className="btn-secondary">
+                Cancel
+              </button>
+              <button onClick={handleParseImport} className="btn-primary" disabled={!importText.trim()}>
+                Parse
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-300">
+              Found <span className="text-slate-100 font-medium">{importResult.tables.length}</span> table
+              {importResult.tables.length > 1 ? 's' : ''} and{' '}
+              <span className="text-slate-100 font-medium">{importResult.edges.length}</span> relationship
+              {importResult.edges.length > 1 ? 's' : ''}.
+            </p>
+            {latestStateRef.current.nodes.length > 0 && (
+              <p className="mt-2 text-xs text-amber-300">
+                This will replace your current diagram ({latestStateRef.current.nodes.length} existing table
+                {latestStateRef.current.nodes.length > 1 ? 's' : ''}).
+              </p>
+            )}
+            {importResult.warnings.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {importResult.warnings.length} warning{importResult.warnings.length > 1 ? 's' : ''}
+                </div>
+                <ul className="mt-1.5 space-y-1 pl-6 list-disc text-xs text-amber-300/90 leading-relaxed">
+                  {importResult.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setImportResult(null)} className="btn-secondary">
+                Back
+              </button>
+              <button onClick={handleConfirmImport} className="btn-primary">
+                Import
+              </button>
+            </div>
+          </>
+        )}
       </Modal>
     </div>
   );
