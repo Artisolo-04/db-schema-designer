@@ -1,4 +1,4 @@
-import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint } from 'lucide-react';
+import { Table2, Plus, Trash2, Key, Asterisk, Fingerprint, ListTree } from 'lucide-react';
 import { COLUMN_TYPES } from '../../utils/columnTypes.js';
 import { createDefaultColumn } from '../../utils/schemaDefaults.js';
 import EditableText from './EditableText.jsx';
@@ -11,7 +11,7 @@ const FLAGS = [
   { key: 'isUnique', label: 'Unique', icon: Fingerprint },
 ];
 
-export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCreateRelationship, allTables, bringToFront }) {
+export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCreateRelationship, onOpenIndexes, allTables, bringToFront }) {
   function updateData(updater) {
     onUpdateData?.(id, updater);
   }
@@ -58,6 +58,13 @@ export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCre
           inputClassName="text-sm font-semibold bg-surface-3 border border-brand-500/50 rounded px-2 py-1 text-slate-100 flex-1 outline-none nodrag"
           placeholder="table_name"
         />
+        <button
+          onClick={() => onOpenIndexes?.(id)}
+          className="nodrag text-slate-500 hover:text-brand-300 transition shrink-0"
+          title="Manage indexes"
+        >
+          <ListTree className="w-3.5 h-3.5" />
+        </button>
         <button
           onClick={() => onDeleteTable?.(id)}
           className="nodrag text-slate-500 hover:text-red-400 transition shrink-0"

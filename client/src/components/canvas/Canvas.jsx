@@ -31,12 +31,14 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, relationshipApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, onOpenIndexes, relationshipApiRef, tableApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onEdgeSelectRef = useRef(onEdgeSelect);
   onEdgeSelectRef.current = onEdgeSelect;
+  const onOpenIndexesRef = useRef(onOpenIndexes);
+  onOpenIndexesRef.current = onOpenIndexes;
   const onUndoRedoStateChangeRef = useRef(onUndoRedoStateChange);
   onUndoRedoStateChangeRef.current = onUndoRedoStateChange;
   const openEdgeIdRef = useRef(openEdgeId);
@@ -172,6 +174,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
           onUpdateData,
           onDeleteTable,
           onCreateRelationship,
+          onOpenIndexes: (id) => onOpenIndexesRef.current?.(id),
           bringToFront,
         });
       });
@@ -450,6 +453,10 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
 
     if (relationshipApiRef) {
       relationshipApiRef.current = { updateRelationship, deleteRelationship, changeRelationshipColumn, convertToManyToMany, swapRelationshipEndpoints };
+    }
+
+    if (tableApiRef) {
+      tableApiRef.current = { updateTableData: onUpdateData };
     }
 
     function addTable() {

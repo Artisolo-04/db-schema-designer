@@ -29,6 +29,17 @@ export function buildForeignKeyClause({
   );
 }
 
+export function buildCreateIndexClause({
+  tableName,
+  indexName,
+  columnNames = [],
+  isUnique = false,
+}) {
+  const cols = columnNames.map(quoteIdent).join(', ');
+  const keyword = isUnique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
+  return `${keyword} ${quoteIdent(indexName)} ON ${quoteIdent(tableName)} (${cols});`;
+}
+
 export function generateDDL(tables = [], edges = []) {
   if (!tables.length) {
     return '-- Add a table on the canvas to generate SQL';
@@ -55,6 +66,28 @@ export function generateDDL(tables = [], edges = []) {
     }
 
     return `CREATE TABLE ${quoteIdent(table.data?.name)} (\n${lines.join(',\n')}\n);`;
+  });
+
+  const indexStatements = tables.flatMap((table) => {
+    const indexes = table.data?.indexes || [];
+    const columnByColId = {};
+    (table.data?.columns || []).forEach((c) => { columnByColId[c.id] = c; });
+
+    return indexes
+      .filter((idx) => (idx.columns || []).length > 0)
+      .map((idx) => {
+        const columnNames = idx.columns
+          .map((colId) => columnByColId[colId]?.name)
+          .filter(Boolean);
+        if (!columnNames.length) return null;
+        return buildCreateIndexClause({
+          tableName: table.data?.name,
+          indexName: idx.name || `idx_${table.data?.name}_${columnNames.join('_')}`,
+          columnNames,
+          isUnique: !!idx.isUnique,
+        });
+      })
+      .filter(Boolean);
   });
 
   const fkStatements = edges
@@ -86,5 +119,5 @@ export function generateDDL(tables = [], edges = []) {
     })
     .filter(Boolean);
 
-  return [...createStatements, ...fkStatements].join('\n\n');
+  return [...createStatements, ...indexStatements, ...fkStatements].join('\n\n');
 }

@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
+import IndexPanel from '../components/canvas/IndexPanel.jsx';
 import Modal from '../components/Modal.jsx';
 import SqlPreview from '../components/SqlPreview.jsx';
 import { fetchProjectData, saveProjectData } from '../api/projects.js';
@@ -21,6 +22,7 @@ export default function Editor() {
 
   const addTableRef = useRef(null);
   const relationshipApiRef = useRef(null);
+  const tableApiRef = useRef(null);
   const undoRedoRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const latestStateRef = useRef({ nodes: [], edges: [] });
@@ -30,6 +32,7 @@ export default function Editor() {
   const [initialEdges, setInitialEdges] = useState([]);
   const [saving, setSaving] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState(null);
+  const [selectedTable, setSelectedTable] = useState(null);
   const [undoRedoState, setUndoRedoState] = useState({ canUndo: false, canRedo: false });
 
   const [sqlOpen, setSqlOpen] = useState(false);
@@ -135,6 +138,29 @@ export default function Editor() {
     if (!selectedEdge) return;
     relationshipApiRef.current?.deleteRelationship(selectedEdge.linkId);
     setSelectedEdge(null);
+  }
+
+  function handleEdgeSelect(edge) {
+    setSelectedEdge(edge);
+    if (edge) setSelectedTable(null);
+  }
+
+  function handleOpenIndexes(tableId) {
+    const node = latestStateRef.current.nodes.find((n) => n.id === tableId);
+    if (!node) return;
+    setSelectedEdge(null);
+    setSelectedTable({
+      id: node.id,
+      name: node.data?.name,
+      columns: node.data?.columns || [],
+      indexes: node.data?.indexes || [],
+    });
+  }
+
+  function handleUpdateIndexes(indexes) {
+    if (!selectedTable) return;
+    tableApiRef.current?.updateTableData(selectedTable.id, (d) => ({ ...d, indexes }));
+    setSelectedTable((prev) => (prev ? { ...prev, indexes } : prev));
   }
 
   function openSql() {
@@ -250,7 +276,7 @@ export default function Editor() {
       <div className="flex-1 min-h-0 flex">
         <div
           className="h-full min-w-0 transition-[flex-basis] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-          style={{ flexBasis: selectedEdge ? '75%' : '100%' }}
+          style={{ flexBasis: (selectedEdge || selectedTable) ? '75%' : '100%' }}
         >
           <Canvas
             key={canvasKey}
@@ -258,8 +284,10 @@ export default function Editor() {
             initialEdges={initialEdges}
             onAddTableRef={addTableRef}
             onChange={handleCanvasChange}
-            onEdgeSelect={setSelectedEdge}
+            onEdgeSelect={handleEdgeSelect}
+            onOpenIndexes={handleOpenIndexes}
             relationshipApiRef={relationshipApiRef}
+            tableApiRef={tableApiRef}
             openEdgeId={selectedEdge?.linkId ?? null}
             undoRedoRef={undoRedoRef}
             onUndoRedoStateChange={setUndoRedoState}
@@ -268,19 +296,27 @@ export default function Editor() {
 
         <div
           className="h-full shrink-0 overflow-hidden border-l border-surface-border bg-surface-1 transition-[flex-basis] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-          style={{ flexBasis: selectedEdge ? '25%' : '0%' }}
+          style={{ flexBasis: (selectedEdge || selectedTable) ? '25%' : '0%' }}
         >
-          <RelationshipPanel
-            edge={selectedEdge}
-            onChangeType={handleRelationshipTypeChange}
-            onChangeOnDelete={handleOnDeleteChange}
-            onChangeOnUpdate={handleOnUpdateChange}
-            onChangeSourceColumn={handleChangeSourceColumn}
-            onChangeTargetColumn={handleChangeTargetColumn}
-            onReverse={handleReverseRelationship}
-            onDelete={handleDeleteRelationship}
-            onClose={() => setSelectedEdge(null)}
-          />
+          {selectedTable ? (
+            <IndexPanel
+              table={selectedTable}
+              onChangeIndexes={handleUpdateIndexes}
+              onClose={() => setSelectedTable(null)}
+            />
+          ) : (
+            <RelationshipPanel
+              edge={selectedEdge}
+              onChangeType={handleRelationshipTypeChange}
+              onChangeOnDelete={handleOnDeleteChange}
+              onChangeOnUpdate={handleOnUpdateChange}
+              onChangeSourceColumn={handleChangeSourceColumn}
+              onChangeTargetColumn={handleChangeTargetColumn}
+              onReverse={handleReverseRelationship}
+              onDelete={handleDeleteRelationship}
+              onClose={() => setSelectedEdge(null)}
+            />
+          )}
         </div>
       </div>
 

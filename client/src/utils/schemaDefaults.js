@@ -55,6 +55,7 @@ export function createDefaultTable(position, existingNodes = []) {
       columns: [
         createDefaultColumn({ name: 'id', type: 'uuid', isPrimaryKey: true, isNotNull: true }),
       ],
+      indexes: [],
     },
   };
 }
