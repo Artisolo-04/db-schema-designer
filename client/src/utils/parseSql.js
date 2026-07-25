@@ -215,6 +215,19 @@ function parseCreateTypeEnum(stmt, warnings) {
   return { id: generateId('enum'), name, values };
 }
 
+function parseCreateIndex(stmt, warnings) {
+  const match = stmt.match(/^CREATE\s+(UNIQUE\s+)?INDEX\s+("(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s+ON\s+("(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)\s*$/i);
+  if (!match) {
+    warnings.push(`Could not parse CREATE INDEX statement: ${stmt.slice(0, 80)}...`);
+    return null;
+  }
+  const isUnique = !!match[1];
+  const indexName = unquoteIdent(match[2]);
+  const tableName = unquoteIdent(match[3]);
+  const columnNames = splitTopLevelCommas(match[4]).map(unquoteIdent);
+  return { tableName, indexName, columnNames, isUnique };
+}
+
 function layoutPosition(index) {
   const col = index % COLS_PER_ROW;
   const row = Math.floor(index / COLS_PER_ROW);
@@ -239,6 +252,7 @@ export function parseSQL(sqlText) {
   const statements = splitStatements(cleaned);
 
   const pendingForeignKeys = [];
+  const pendingIndexes = [];
 
   statements.forEach((stmt) => {
     const trimmed = stmt.trim();
@@ -254,7 +268,7 @@ export function parseSQL(sqlText) {
         position,
         width: TABLE_WIDTH,
         height: computeHeight(parsed.columns.length),
-        data: { name: parsed.tableName, columns: parsed.columns },
+        data: { name: parsed.tableName, columns: parsed.columns, indexes: [] },
       };
       tables.push(tableNode);
       tableByName[parsed.tableName] = tableNode;
@@ -281,6 +295,12 @@ export function parseSQL(sqlText) {
     if (/^ALTER\s+TABLE/i.test(trimmed)) {
       const fk = parseAlterTableForeignKey(trimmed, warnings);
       if (fk) pendingForeignKeys.push(fk);
+      return;
+    }
+
+    if (/^CREATE\s+(UNIQUE\s+)?INDEX/i.test(trimmed)) {
+      const idx = parseCreateIndex(trimmed, warnings);
+      if (idx) pendingIndexes.push(idx);
       return;
     }
 
@@ -317,6 +337,30 @@ export function parseSQL(sqlText) {
         onDelete: fk.onDelete,
         onUpdate: fk.onUpdate,
       },
+    });
+  });
+
+  pendingIndexes.forEach((idx) => {
+    const table = tableByName[idx.tableName];
+    if (!table) {
+      warnings.push(`Index references unknown table: ${idx.tableName}`);
+      return;
+    }
+    const columnIds = idx.columnNames.map((colName) => {
+      const col = table.data.columns.find((c) => c.name === colName);
+      if (!col) {
+        warnings.push(`Index "${idx.indexName}" references unknown column: ${idx.tableName}.${colName}`);
+      }
+      return col ? col.id : null;
+    }).filter(Boolean);
+
+    if (!columnIds.length) return;
+
+    table.data.indexes.push({
+      id: generateId('index'),
+      name: idx.indexName,
+      columns: columnIds,
+      isUnique: idx.isUnique,
     });
   });
 

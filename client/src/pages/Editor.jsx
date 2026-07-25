@@ -508,6 +508,9 @@ export default function Editor() {
                 spellCheck={false}
               />
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Auto-detects PostgreSQL, MySQL, or SQLite syntax — no need to specify a dialect.
+            </p>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={closeImport} className="btn-secondary">
                 Cancel
@@ -521,9 +524,12 @@ export default function Editor() {
           <>
             <p className="text-sm text-slate-300">
               Found <span className="text-slate-100 font-medium">{importResult.tables.length}</span> table
-              {importResult.tables.length > 1 ? 's' : ''} and{' '}
-              <span className="text-slate-100 font-medium">{importResult.edges.length}</span> relationship
-              {importResult.edges.length > 1 ? 's' : ''}.
+              {importResult.tables.length > 1 ? 's' : ''}, <span className="text-slate-100 font-medium">{importResult.edges.length}</span> relationship
+              {importResult.edges.length > 1 ? 's' : ''}, and{' '}
+              <span className="text-slate-100 font-medium">
+                {importResult.tables.reduce((sum, t) => sum + (t.data?.indexes?.length || 0), 0)}
+              </span> index
+              {importResult.tables.reduce((sum, t) => sum + (t.data?.indexes?.length || 0), 0) === 1 ? '' : 'es'}.
             </p>
             {latestStateRef.current.nodes.length > 0 && (
               <p className="mt-2 text-xs text-amber-300">
