@@ -40,7 +40,12 @@ export function buildCreateIndexClause({
   return `${keyword} ${quoteIdent(indexName)} ON ${quoteIdent(tableName)} (${cols});`;
 }
 
-export function generateDDL(tables = [], edges = []) {
+export function buildCreateEnumTypeClause({ name, values = [] }) {
+  const vals = values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+  return `CREATE TYPE ${quoteIdent(name)} AS ENUM (${vals});`;
+}
+
+export function generateDDL(tables = [], edges = [], enumTypes = []) {
   if (!tables.length) {
     return '-- Add a table on the canvas to generate SQL';
   }
@@ -119,5 +124,16 @@ export function generateDDL(tables = [], edges = []) {
     })
     .filter(Boolean);
 
-  return [...createStatements, ...indexStatements, ...fkStatements].join('\n\n');
+  const usedTypeNames = new Set();
+  tables.forEach((table) => {
+    (table.data?.columns || []).forEach((col) => {
+      if (col.type) usedTypeNames.add(col.type);
+    });
+  });
+
+  const enumStatements = enumTypes
+    .filter((et) => usedTypeNames.has(et.name))
+    .map((et) => buildCreateEnumTypeClause({ name: et.name, values: et.values || [] }));
+
+  return [...enumStatements, ...createStatements, ...indexStatements, ...fkStatements].join('\n\n');
 }

@@ -200,6 +200,21 @@ function parseAlterTableForeignKey(stmt, warnings) {
   };
 }
 
+function parseCreateTypeEnum(stmt, warnings) {
+  const match = stmt.match(/CREATE\s+TYPE\s+("(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s+AS\s+ENUM\s*\(([\s\S]*)\)\s*$/i);
+  if (!match) {
+    warnings.push(`Could not parse CREATE TYPE statement: ${stmt.slice(0, 80)}...`);
+    return null;
+  }
+  const name = unquoteIdent(match[1]);
+  const values = splitTopLevelCommas(match[2]).map((v) => {
+    const trimmed = v.trim();
+    const strMatch = trimmed.match(/^'([\s\S]*)'$/);
+    return strMatch ? strMatch[1].replace(/''/g, "'") : trimmed;
+  });
+  return { id: generateId('enum'), name, values };
+}
+
 function layoutPosition(index) {
   const col = index % COLS_PER_ROW;
   const row = Math.floor(index / COLS_PER_ROW);
@@ -213,10 +228,11 @@ export function parseSQL(sqlText) {
   const warnings = [];
   const tables = [];
   const edges = [];
+  const enumTypes = [];
   const tableByName = {};
 
   if (!sqlText || !sqlText.trim()) {
-    return { tables, edges, warnings: ['No SQL provided'] };
+    return { tables, edges, enumTypes, warnings: ['No SQL provided'] };
   }
 
   const cleaned = stripComments(sqlText);
@@ -253,6 +269,12 @@ export function parseSQL(sqlText) {
           onUpdate: 'CASCADE',
         });
       });
+      return;
+    }
+
+    if (/^CREATE\s+TYPE/i.test(trimmed)) {
+      const enumType = parseCreateTypeEnum(trimmed, warnings);
+      if (enumType) enumTypes.push(enumType);
       return;
     }
 
@@ -298,5 +320,5 @@ export function parseSQL(sqlText) {
     });
   });
 
-  return { tables, edges, warnings };
+  return { tables, edges, enumTypes, warnings };
 }

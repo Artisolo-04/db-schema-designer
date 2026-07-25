@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal, Shapes } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import IndexPanel from '../components/canvas/IndexPanel.jsx';
+import EnumTypesPanel from '../components/canvas/EnumTypesPanel.jsx';
 import Modal from '../components/Modal.jsx';
 import SqlPreview from '../components/SqlPreview.jsx';
 import { fetchProjectData, saveProjectData } from '../api/projects.js';
@@ -23,13 +24,15 @@ export default function Editor() {
   const addTableRef = useRef(null);
   const relationshipApiRef = useRef(null);
   const tableApiRef = useRef(null);
+  const enumTypesApiRef = useRef(null);
   const undoRedoRef = useRef(null);
   const saveTimeoutRef = useRef(null);
-  const latestStateRef = useRef({ nodes: [], edges: [] });
+  const latestStateRef = useRef({ nodes: [], edges: [], enumTypes: [] });
 
   const [loading, setLoading] = useState(true);
   const [initialNodes, setInitialNodes] = useState([]);
   const [initialEdges, setInitialEdges] = useState([]);
+  const [initialEnumTypes, setInitialEnumTypes] = useState([]);
   const [saving, setSaving] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState(null);
   const [selectedTable, setSelectedTable] = useState(null);
@@ -40,6 +43,7 @@ export default function Editor() {
   const [sqlWarnings, setSqlWarnings] = useState([]);
 
   const [canvasKey, setCanvasKey] = useState(0);
+  const [typesOpen, setTypesOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importResult, setImportResult] = useState(null);
@@ -54,9 +58,11 @@ export default function Editor() {
         if (cancelled) return;
         const nodes = diagram?.tables ?? [];
         const edges = diagram?.edges ?? [];
+        const enumTypes = diagram?.enumTypes ?? [];
         setInitialNodes(nodes);
         setInitialEdges(edges);
-        latestStateRef.current = { nodes, edges };
+        setInitialEnumTypes(enumTypes);
+        latestStateRef.current = { nodes, edges, enumTypes };
       } catch (err) {
         if (cancelled) return;
         showToast(getErrorMessage(err), 'error');
@@ -76,7 +82,7 @@ export default function Editor() {
 
   const handleCanvasChange = useCallback(
     (nodes, edges) => {
-      latestStateRef.current = { nodes, edges };
+      latestStateRef.current = { ...latestStateRef.current, nodes, edges };
       setSaving(true);
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -85,6 +91,7 @@ export default function Editor() {
           await saveProjectData(projectId, {
             tables: latestStateRef.current.nodes,
             edges: latestStateRef.current.edges,
+            enumTypes: latestStateRef.current.enumTypes,
           });
         } catch (err) {
           showToast(getErrorMessage(err), 'error');
@@ -163,9 +170,31 @@ export default function Editor() {
     setSelectedTable((prev) => (prev ? { ...prev, indexes } : prev));
   }
 
+  function handleUpdateEnumTypes(enumTypes) {
+    latestStateRef.current = { ...latestStateRef.current, enumTypes };
+    enumTypesApiRef.current?.setEnumTypes(enumTypes);
+    setInitialEnumTypes(enumTypes);
+    setSaving(true);
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveProjectData(projectId, {
+          tables: latestStateRef.current.nodes,
+          edges: latestStateRef.current.edges,
+          enumTypes: latestStateRef.current.enumTypes,
+        });
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      } finally {
+        setSaving(false);
+      }
+    }, SAVE_DELAY_MS);
+  }
+
   function openSql() {
-    const { nodes, edges } = latestStateRef.current;
-    setSqlText(generateDDL(nodes, edges));
+    const { nodes, edges, enumTypes } = latestStateRef.current;
+    setSqlText(generateDDL(nodes, edges, enumTypes));
     setSqlWarnings(validateSchema(nodes, edges));
     setSqlOpen(true);
   }
@@ -193,18 +222,19 @@ export default function Editor() {
 
   async function handleConfirmImport() {
     if (!importResult) return;
-    const { tables, edges } = importResult;
+    const { tables, edges, enumTypes = [] } = importResult;
 
     setInitialNodes(tables);
     setInitialEdges(edges);
-    latestStateRef.current = { nodes: tables, edges };
+    setInitialEnumTypes(enumTypes);
+    latestStateRef.current = { nodes: tables, edges, enumTypes };
     setSelectedEdge(null);
     setCanvasKey((k) => k + 1);
     closeImport();
 
     setSaving(true);
     try {
-      await saveProjectData(projectId, { tables, edges });
+      await saveProjectData(projectId, { tables, edges, enumTypes });
     } catch (err) {
       showToast(getErrorMessage(err), 'error');
     } finally {
@@ -257,6 +287,10 @@ export default function Editor() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={() => setTypesOpen(true)} className="btn-secondary">
+              <Shapes className="w-4 h-4" />
+              Manage Types
+            </button>
             <button onClick={openImport} className="btn-secondary">
               <Upload className="w-4 h-4" />
               Import SQL
@@ -282,12 +316,14 @@ export default function Editor() {
             key={canvasKey}
             initialNodes={initialNodes}
             initialEdges={initialEdges}
+            initialEnumTypes={initialEnumTypes}
             onAddTableRef={addTableRef}
             onChange={handleCanvasChange}
             onEdgeSelect={handleEdgeSelect}
             onOpenIndexes={handleOpenIndexes}
             relationshipApiRef={relationshipApiRef}
             tableApiRef={tableApiRef}
+            enumTypesApiRef={enumTypesApiRef}
             openEdgeId={selectedEdge?.linkId ?? null}
             undoRedoRef={undoRedoRef}
             onUndoRedoStateChange={setUndoRedoState}
@@ -335,6 +371,13 @@ export default function Editor() {
           </div>
         )}
         <SqlPreview sql={sqlText} filename="schema.sql" maxHeightClass="max-h-96 overflow-auto" />
+      </Modal>
+
+      <Modal open={typesOpen} title="Custom Types" onClose={() => setTypesOpen(false)} maxWidthClass="max-w-lg">
+        <EnumTypesPanel
+          enumTypes={initialEnumTypes}
+          onChangeEnumTypes={handleUpdateEnumTypes}
+        />
       </Modal>
 
       <Modal open={importOpen} title="Import SQL" onClose={closeImport} maxWidthClass="max-w-2xl">

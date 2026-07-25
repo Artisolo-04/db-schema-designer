@@ -11,7 +11,7 @@ const FLAGS = [
   { key: 'isUnique', label: 'Unique', icon: Fingerprint },
 ];
 
-export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCreateRelationship, onOpenIndexes, allTables, bringToFront }) {
+export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCreateRelationship, onOpenIndexes, allTables, enumTypes = [], bringToFront }) {
   function updateData(updater) {
     onUpdateData?.(id, updater);
   }
@@ -45,6 +45,7 @@ export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCre
   }
 
   const columns = data.columns || [];
+  const typeOptions = [...COLUMN_TYPES, ...enumTypes.map((et) => et.name)];
 
   return (
     <div className="w-full h-full glass-card overflow-none shadow-xl shadow-black/40 nodrag-target flex flex-col" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
@@ -100,7 +101,7 @@ export default function TableNode({ id, data, onUpdateData, onDeleteTable, onCre
 
                   <TypeSelect
                     value={col.type}
-                    options={COLUMN_TYPES}
+                    options={typeOptions}
                     onChange={(type) => updateColumn(col.id, { type })}
                     onOpen={() => bringToFront?.(id)}
                   />

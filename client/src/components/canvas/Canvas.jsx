@@ -31,7 +31,7 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], onAddTableRef, onChange, onEdgeSelect, onOpenIndexes, relationshipApiRef, tableApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], initialEnumTypes = [], onAddTableRef, onChange, onEdgeSelect, onOpenIndexes, relationshipApiRef, tableApiRef, enumTypesApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -45,6 +45,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
   openEdgeIdRef.current = openEdgeId;
   const zoomActionsRef = useRef({});
   const minimapContainerRef = useRef(null);
+  const enumTypesRef = useRef(initialEnumTypes);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -171,6 +172,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       elements.forEach((el) => {
         paper.findViewByModel(el)?.renderReact?.({
           allTables,
+          enumTypes: enumTypesRef.current,
           onUpdateData,
           onDeleteTable,
           onCreateRelationship,
@@ -455,8 +457,17 @@ export default function Canvas({ initialNodes = [], initialEdges = [], onAddTabl
       relationshipApiRef.current = { updateRelationship, deleteRelationship, changeRelationshipColumn, convertToManyToMany, swapRelationshipEndpoints };
     }
 
+    function setEnumTypes(next) {
+      enumTypesRef.current = next;
+      renderAllTables();
+    }
+
     if (tableApiRef) {
       tableApiRef.current = { updateTableData: onUpdateData };
+    }
+
+    if (enumTypesApiRef) {
+      enumTypesApiRef.current = { setEnumTypes };
     }
 
     function addTable() {
