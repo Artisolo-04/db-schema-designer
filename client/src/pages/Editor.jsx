@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal, Shapes } from 'lucide-react';
+import { ArrowLeft, Plus, LayoutGrid, Code2, Loader2, AlertTriangle, Undo2, Redo2, Upload, Terminal, Shapes, Download, FolderUp } from 'lucide-react';
 import Canvas from '../components/canvas/Canvas.jsx';
 import RelationshipPanel from '../components/canvas/RelationshipPanel.jsx';
 import IndexPanel from '../components/canvas/IndexPanel.jsx';
@@ -28,6 +28,7 @@ export default function Editor() {
   const enumTypesApiRef = useRef(null);
   const undoRedoRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const restoreFileInputRef = useRef(null);
   const latestStateRef = useRef({ nodes: [], edges: [], enumTypes: [] });
 
   const [loading, setLoading] = useState(true);
@@ -207,6 +208,69 @@ export default function Editor() {
     setSqlText(generateDDL(nodes, edges, enumTypes, dialect));
   }
 
+  function downloadBackup() {
+    const { nodes, edges, enumTypes } = latestStateRef.current;
+    const payload = {
+      tables: nodes,
+      edges,
+      enumTypes,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = payload.exportedAt.replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `project-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded', 'success');
+  }
+
+  function triggerRestore() {
+    restoreFileInputRef.current?.click();
+  }
+
+  async function handleRestoreFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const { tables, edges, enumTypes } = parsed;
+
+      if (!Array.isArray(tables) || !Array.isArray(edges)) {
+        showToast('Invalid backup file: missing tables or edges', 'error');
+        return;
+      }
+
+      const safeEnumTypes = Array.isArray(enumTypes) ? enumTypes : [];
+
+      setInitialNodes(tables);
+      setInitialEdges(edges);
+      setInitialEnumTypes(safeEnumTypes);
+      latestStateRef.current = { nodes: tables, edges, enumTypes: safeEnumTypes };
+      setSelectedEdge(null);
+      setCanvasKey((k) => k + 1);
+
+      setSaving(true);
+      try {
+        await saveProjectData(projectId, { tables, edges, enumTypes: safeEnumTypes });
+        showToast('Backup restored', 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      } finally {
+        setSaving(false);
+      }
+    } catch (err) {
+      showToast('Could not parse backup file (invalid JSON)', 'error');
+    }
+  }
+
   function openImport() {
     setImportText('');
     setImportResult(null);
@@ -303,6 +367,21 @@ export default function Editor() {
               <Upload className="w-4 h-4" />
               Import SQL
             </button>
+            <button onClick={downloadBackup} className="btn-secondary" title="Download project backup as JSON">
+              <Download className="w-4 h-4" />
+              Backup
+            </button>
+            <button onClick={triggerRestore} className="btn-secondary" title="Restore project from a backup JSON file">
+              <FolderUp className="w-4 h-4" />
+              Restore
+            </button>
+            <input
+              ref={restoreFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleRestoreFile}
+              className="hidden"
+            />
             <button onClick={openSql} className="btn-secondary">
               <Code2 className="w-4 h-4" />
               Generate SQL
