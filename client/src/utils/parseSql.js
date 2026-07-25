@@ -1,4 +1,5 @@
 import { generateId, createDefaultColumn } from './schemaDefaults.js';
+import { COLUMN_TYPES } from './columnTypes.js';
 
 const TABLE_WIDTH = 320;
 const ROW_H = 80;
@@ -69,6 +70,30 @@ function splitTopLevelCommas(str) {
   return parts;
 }
 
+const TYPE_ALIASES = {
+  'char(36)': 'uuid',
+  decimal: 'numeric',
+  float: 'real',
+  double: 'double precision',
+  'tinyint(1)': 'boolean',
+  tinyint: 'boolean',
+  datetime: 'timestamp',
+  blob: 'bytea',
+  int: 'integer',
+};
+
+const CANONICAL_TYPES = new Set(COLUMN_TYPES);
+
+function normalizeColumnType(rawType) {
+  const lower = (rawType || '').trim().toLowerCase();
+  if (CANONICAL_TYPES.has(lower)) return lower;
+  if (TYPE_ALIASES[lower]) return TYPE_ALIASES[lower];
+  const stripped = lower.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (CANONICAL_TYPES.has(stripped)) return stripped;
+  if (TYPE_ALIASES[stripped]) return TYPE_ALIASES[stripped];
+  return lower;
+}
+
 function unquoteIdent(raw) {
   const trimmed = raw.trim();
   const match = trimmed.match(/^"(.*)"$/) || trimmed.match(/^`(.*)`$/);
@@ -85,13 +110,42 @@ function parseColumnDef(defText, warnings, tableName) {
   let rest = nameMatch[2].trim();
 
   const typeMatch = rest.match(/^([A-Za-z][A-Za-z0-9_]*(?:\s+precision)?(?:\s*\([^)]*\))?(?:\[\])?)/i);
-  const type = typeMatch ? typeMatch[1].trim().toLowerCase() : 'text';
+  const rawTypeToken = typeMatch ? typeMatch[1].trim() : 'text';
   rest = rest.slice(typeMatch ? typeMatch[0].length : 0);
+
+  let type = normalizeColumnType(rawTypeToken);
+  let inlineEnum = null;
+
+  const enumMatch = rawTypeToken.match(/^ENUM\s*\(([\s\S]*)\)$/i);
+  if (enumMatch) {
+    const values = splitTopLevelCommas(enumMatch[1]).map((v) => {
+      const trimmed = v.trim();
+      const strMatch = trimmed.match(/^'([\s\S]*)'$/);
+      return strMatch ? strMatch[1].replace(/''/g, "'") : trimmed;
+    });
+    const enumName = `${tableName}_${name}`.toLowerCase();
+    inlineEnum = { name: enumName, values };
+    type = enumName;
+  }
 
   const upperRest = rest.toUpperCase();
   const isPrimaryKey = /PRIMARY\s+KEY/.test(upperRest);
   const isNotNull = /NOT\s+NULL/.test(upperRest) || isPrimaryKey;
   const isUnique = /UNIQUE/.test(upperRest);
+
+  if (!inlineEnum) {
+    const checkMatch = rest.match(/CHECK\s*\(\s*(?:"(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(([\s\S]*?)\)\s*\)/i);
+    if (checkMatch) {
+      const values = splitTopLevelCommas(checkMatch[1]).map((v) => {
+        const trimmed = v.trim();
+        const strMatch = trimmed.match(/^'([\s\S]*)'$/);
+        return strMatch ? strMatch[1].replace(/''/g, "'") : trimmed;
+      });
+      const enumName = `${tableName}_${name}`.toLowerCase();
+      inlineEnum = { name: enumName, values };
+      type = enumName;
+    }
+  }
 
   let references = null;
   const refMatch = rest.match(/REFERENCES\s+("(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s*\(\s*("(?:[^"]|"")+"|`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\s*\)/i);
@@ -102,6 +156,7 @@ function parseColumnDef(defText, warnings, tableName) {
   return {
     column: createDefaultColumn({ name, type, isPrimaryKey, isNotNull, isUnique }),
     references,
+    inlineEnum,
   };
 }
 
@@ -119,6 +174,7 @@ function parseCreateTable(stmt, warnings) {
   const pkNamesFromTableLevel = [];
   const uniqueGroupsFromTableLevel = [];
   const inlineReferences = [];
+  const inlineEnums = [];
 
   parts.forEach((part) => {
     const trimmed = part.trim();
@@ -162,6 +218,9 @@ function parseCreateTable(stmt, warnings) {
           refColumn: parsed.references.column,
         });
       }
+      if (parsed.inlineEnum) {
+        inlineEnums.push(parsed.inlineEnum);
+      }
     }
   });
 
@@ -175,7 +234,7 @@ function parseCreateTable(stmt, warnings) {
     });
   });
 
-  return { tableName, columns, inlineReferences };
+  return { tableName, columns, inlineReferences, inlineEnums };
 }
 
 function parseAlterTableForeignKey(stmt, warnings) {
@@ -282,6 +341,11 @@ export function parseSQL(sqlText) {
           onDelete: 'CASCADE',
           onUpdate: 'CASCADE',
         });
+      });
+
+      parsed.inlineEnums.forEach((inlineEnum) => {
+        if (enumTypes.some((et) => et.name === inlineEnum.name)) return;
+        enumTypes.push({ id: generateId('enum'), name: inlineEnum.name, values: inlineEnum.values });
       });
       return;
     }
