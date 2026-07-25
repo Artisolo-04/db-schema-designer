@@ -11,6 +11,7 @@ import { fetchProjectData, saveProjectData } from '../api/projects.js';
 import { getErrorMessage } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { generateDDL } from '../utils/generateDDL.js';
+import { DIALECTS } from '../utils/dialects.js';
 import { validateSchema } from '../utils/validateSchema.js';
 import { parseSQL } from '../utils/parseSql.js';
 
@@ -41,6 +42,7 @@ export default function Editor() {
   const [sqlOpen, setSqlOpen] = useState(false);
   const [sqlText, setSqlText] = useState('');
   const [sqlWarnings, setSqlWarnings] = useState([]);
+  const [sqlDialect, setSqlDialect] = useState('postgres');
 
   const [canvasKey, setCanvasKey] = useState(0);
   const [typesOpen, setTypesOpen] = useState(false);
@@ -194,9 +196,15 @@ export default function Editor() {
 
   function openSql() {
     const { nodes, edges, enumTypes } = latestStateRef.current;
-    setSqlText(generateDDL(nodes, edges, enumTypes));
+    setSqlText(generateDDL(nodes, edges, enumTypes, sqlDialect));
     setSqlWarnings(validateSchema(nodes, edges));
     setSqlOpen(true);
+  }
+
+  function changeSqlDialect(dialect) {
+    setSqlDialect(dialect);
+    const { nodes, edges, enumTypes } = latestStateRef.current;
+    setSqlText(generateDDL(nodes, edges, enumTypes, dialect));
   }
 
   function openImport() {
@@ -357,6 +365,20 @@ export default function Editor() {
       </div>
 
       <Modal open={sqlOpen} title="Generated SQL" onClose={() => setSqlOpen(false)} maxWidthClass="max-w-2xl">
+        <div className="mb-3 flex items-center gap-1.5">
+          {Object.entries(DIALECTS).map(([key, d]) => (
+            <button
+              key={key}
+              onClick={() => changeSqlDialect(key)}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors
+                ${sqlDialect === key
+                  ? 'border-brand-500/60 bg-brand-500/15 text-brand-200'
+                  : 'border-surface-border text-slate-400 hover:text-slate-200 hover:border-slate-600'}`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
         {sqlWarnings.length > 0 && (
           <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
             <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
@@ -370,7 +392,11 @@ export default function Editor() {
             </ul>
           </div>
         )}
-        <SqlPreview sql={sqlText} filename="schema.sql" maxHeightClass="max-h-96 overflow-auto" />
+        <SqlPreview
+          sql={sqlText}
+          filename={sqlDialect === 'postgres' ? 'schema.sql' : `schema.${sqlDialect}.sql`}
+          maxHeightClass="max-h-96 overflow-auto"
+        />
       </Modal>
 
       <Modal open={typesOpen} title="Custom Types" onClose={() => setTypesOpen(false)} maxWidthClass="max-w-lg">
