@@ -59,7 +59,7 @@ export default function EnumTypesPanel({ enumTypes, onChangeEnumTypes }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 px-0.5">
         <div className="flex items-center gap-3 text-xs text-slate-400">
           <div className="aspect-square flex items-center justify-center shrink-0">
             <Shapes className="w-4 h-4 text-brand-300 shrink-0" />

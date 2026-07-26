@@ -1,51 +1,55 @@
-export function setupUndoRedo({ graph, onRestore, onStateChange }) {
+export function setupUndoRedo({ graph, getExtras, applyExtras, onRestore, onStateChange }) {
   const undoStack = [];
   const redoStack = [];
   let restoring = false;
-  let lastSnapshotJson = JSON.stringify(graph.toJSON());
-
+  function buildSnapshot() {
+    return JSON.stringify({
+      graph: graph.toJSON(),
+      extras: getExtras ? getExtras() : null,
+    });
+  }
+  let lastSnapshotJson = buildSnapshot();
+  let lastMeta = null;
   function emitState() {
     onStateChange?.({ canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 });
   }
-
-  function snapshot() {
+  function snapshot(meta = null) {
     if (restoring) return;
-    const json = JSON.stringify(graph.toJSON());
+    const json = buildSnapshot();
     if (json === lastSnapshotJson) return;
-    undoStack.push(lastSnapshotJson);
+    undoStack.push({ json: lastSnapshotJson, meta: lastMeta });
     lastSnapshotJson = json;
+    lastMeta = meta;
     redoStack.length = 0;
     if (undoStack.length > 100) undoStack.shift();
     emitState();
   }
-
-  function restore(json) {
+  function restore(entry, changeMeta) {
     restoring = true;
-    graph.fromJSON(JSON.parse(json));
-    lastSnapshotJson = json;
+    const parsed = JSON.parse(entry.json);
+    graph.fromJSON(parsed.graph);
+    if (applyExtras) applyExtras(parsed.extras);
+    lastSnapshotJson = entry.json;
+    lastMeta = entry.meta;
     restoring = false;
-    onRestore?.();
+    onRestore?.(changeMeta);
     emitState();
   }
-
   function undo() {
     if (!undoStack.length) return;
-    const current = lastSnapshotJson;
+    const currentEntry = { json: lastSnapshotJson, meta: lastMeta };
     const previous = undoStack.pop();
-    redoStack.push(current);
-    restore(previous);
+    redoStack.push(currentEntry);
+    restore(previous, currentEntry.meta);
   }
-
   function redo() {
     if (!redoStack.length) return;
-    const current = lastSnapshotJson;
+    const currentEntry = { json: lastSnapshotJson, meta: lastMeta };
     const next = redoStack.pop();
-    undoStack.push(current);
-    restore(next);
+    undoStack.push(currentEntry);
+    restore(next, next.meta);
   }
-
   emitState();
-
   return {
     snapshot,
     undo,

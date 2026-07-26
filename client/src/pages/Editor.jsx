@@ -173,6 +173,20 @@ export default function Editor() {
     setSelectedTable((prev) => (prev ? { ...prev, indexes } : prev));
   }
 
+  function handleTableDataRestored(tableId, data) {
+
+    setSelectedTable((prev) => {
+      if (!prev || prev.id !== tableId) return prev;
+      if (!data) return null;
+      return {
+        id: tableId,
+        name: data.name,
+        columns: data.columns || [],
+        indexes: data.indexes || [],
+      };
+    });
+  }
+
   function handleUpdateEnumTypes(enumTypes) {
     latestStateRef.current = { ...latestStateRef.current, enumTypes };
     enumTypesApiRef.current?.setEnumTypes(enumTypes);
@@ -193,6 +207,12 @@ export default function Editor() {
         setSaving(false);
       }
     }, SAVE_DELAY_MS);
+  }
+
+  function handleEnumTypesRestored(enumTypes) {
+
+    latestStateRef.current = { ...latestStateRef.current, enumTypes };
+    setInitialEnumTypes(enumTypes);
   }
 
   function openSql() {
@@ -414,6 +434,11 @@ export default function Editor() {
             openEdgeId={selectedEdge?.linkId ?? null}
             undoRedoRef={undoRedoRef}
             onUndoRedoStateChange={setUndoRedoState}
+            onEnumTypesRestore={handleEnumTypesRestored}
+            openTableId={selectedTable?.id ?? null}
+            onTableDataRestore={handleTableDataRestored}
+            onOpenManageTypes={(open) => setTypesOpen(open)}
+            onCloseIndexPanel={() => setSelectedTable(null)}
           />
         </div>
 

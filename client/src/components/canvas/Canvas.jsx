@@ -31,7 +31,7 @@ function getPortPosition(el, portId) {
 
 const namespace = { app: { Table, Relationship, TableView: TableElementView } };
 
-export default function Canvas({ initialNodes = [], initialEdges = [], initialEnumTypes = [], onAddTableRef, onChange, onEdgeSelect, onOpenIndexes, relationshipApiRef, tableApiRef, enumTypesApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange }) {
+export default function Canvas({ initialNodes = [], initialEdges = [], initialEnumTypes = [], onAddTableRef, onChange, onEdgeSelect, onOpenIndexes, relationshipApiRef, tableApiRef, enumTypesApiRef, openEdgeId, undoRedoRef, onUndoRedoStateChange, onEnumTypesRestore, openTableId, onTableDataRestore, onOpenManageTypes, onCloseIndexPanel }) {
   const containerRef = useRef(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -41,6 +41,16 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
   onOpenIndexesRef.current = onOpenIndexes;
   const onUndoRedoStateChangeRef = useRef(onUndoRedoStateChange);
   onUndoRedoStateChangeRef.current = onUndoRedoStateChange;
+  const onEnumTypesRestoreRef = useRef(onEnumTypesRestore);
+  onEnumTypesRestoreRef.current = onEnumTypesRestore;
+  const openTableIdRef = useRef(openTableId);
+  openTableIdRef.current = openTableId;
+  const onTableDataRestoreRef = useRef(onTableDataRestore);
+  onTableDataRestoreRef.current = onTableDataRestore;
+  const onOpenManageTypesRef = useRef(onOpenManageTypes);
+  onOpenManageTypesRef.current = onOpenManageTypes;
+  const onCloseIndexPanelRef = useRef(onCloseIndexPanel);
+  onCloseIndexPanelRef.current = onCloseIndexPanel;
   const openEdgeIdRef = useRef(openEdgeId);
   openEdgeIdRef.current = openEdgeId;
   const zoomActionsRef = useRef({});
@@ -137,12 +147,21 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
       ]);
     }
 
-    function emitChange() {
+    let pendingSnapshotMeta = null;
+    function scheduleSnapshot(meta) {
       if (isInitializing) return;
-      if (undoRedoApi) {
-        if (snapshotTimeout) clearTimeout(snapshotTimeout);
-        snapshotTimeout = setTimeout(() => undoRedoApi.snapshot(), 400);
-      }
+      if (!undoRedoApi) return;
+      if (meta !== undefined) pendingSnapshotMeta = meta;
+      if (snapshotTimeout) clearTimeout(snapshotTimeout);
+      snapshotTimeout = setTimeout(() => {
+        undoRedoApi.snapshot(pendingSnapshotMeta);
+        pendingSnapshotMeta = null;
+      }, 400);
+    }
+    function emitChange(meta) {
+      if (isInitializing) return;
+      scheduleSnapshot(meta);
+      scheduleSnapshot();
       const nodes = graph.getElements().map((el) => ({
         id: el.id,
         type: 'tableNode',
@@ -223,10 +242,11 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
         .filter((c) => previousTypeById.has(c.id) && previousTypeById.get(c.id) !== c.type)
         .map((c) => c.id);
 
+      const indexesChanged = JSON.stringify(previousData.indexes || []) !== JSON.stringify(nextData.indexes || []);
       el.set('data', nextData);
       resizeForColumns(el);
       renderAllTables();
-      emitChange();
+      emitChange(indexesChanged ? { type: 'table-indexes', tableId: id } : undefined);
 
       const openLinkId = openEdgeIdRef.current;
       if (openLinkId) {
@@ -340,7 +360,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
       if (!link) return;
       link.set('data', { ...link.get('data'), ...patch });
       applyRelationshipVisuals(link);
-      emitChange();
+      emitChange({ type: 'relationship', linkId });
       onEdgeSelectRef.current?.(buildEdgeDescriptor(link));
     }
 
@@ -460,6 +480,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
     function setEnumTypes(next) {
       enumTypesRef.current = next;
       renderAllTables();
+      scheduleSnapshot({ type: 'enumTypes' });
     }
 
     if (tableApiRef) {
@@ -497,10 +518,55 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
 
     undoRedoApi = setupUndoRedo({
       graph,
-      onRestore: () => {
+      getExtras: () => enumTypesRef.current,
+      applyExtras: (enumTypes) => {
+        enumTypesRef.current = enumTypes || [];
+        onEnumTypesRestoreRef.current?.(enumTypesRef.current);
+      },
+      onRestore: (changeMeta) => {
         graph.getLinks().forEach((link) => applyRelationshipVisuals(link));
         renderAllTables();
         emitChange();
+        const target = changeMeta?.type ?? null;
+
+        onOpenManageTypesRef.current?.(target === 'enumTypes');
+
+        if (target === 'relationship') {
+          const changedLink = graph.getCell(changeMeta.linkId);
+          if (changedLink && changedLink.isLink && changedLink.isLink()) {
+            onEdgeSelectRef.current?.(buildEdgeDescriptor(changedLink));
+          } else {
+            onEdgeSelectRef.current?.(null);
+          }
+        } else if (target !== null) {
+          onEdgeSelectRef.current?.(null);
+        } else {
+          const openLinkId = openEdgeIdRef.current;
+          if (openLinkId) {
+            const openLink = graph.getCell(openLinkId);
+            if (openLink && openLink.isLink && openLink.isLink()) {
+              onEdgeSelectRef.current?.(buildEdgeDescriptor(openLink));
+            } else {
+              onEdgeSelectRef.current?.(null);
+            }
+          }
+        }
+
+        if (target === 'table-indexes') {
+          onOpenIndexesRef.current?.(changeMeta.tableId);
+        } else if (target !== null) {
+          onCloseIndexPanelRef.current?.();
+        } else {
+          const openTableId = openTableIdRef.current;
+          if (openTableId) {
+            const openTableEl = graph.getCell(openTableId);
+            if (openTableEl && !(openTableEl.isLink && openTableEl.isLink())) {
+              onTableDataRestoreRef.current?.(openTableId, openTableEl.get('data'));
+            } else {
+              onTableDataRestoreRef.current?.(openTableId, null);
+            }
+          }
+        }
       },
       onStateChange: (state) => onUndoRedoStateChangeRef.current?.(state),
     });
@@ -628,7 +694,7 @@ export default function Canvas({ initialNodes = [], initialEdges = [], initialEn
           ),
         }));
       }
-      emitChange();
+      emitChange({ type: 'relationship', linkId: link.id });
     }
     paper.on('link:pointerup', (linkView) => {
       linkView.el.style.removeProperty('opacity');
